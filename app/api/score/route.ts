@@ -5,6 +5,8 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2Client, r2Bucket, r2PublicBaseUrl } from "@/lib/r2";
 import { isDialect } from "@/lib/dialects";
 
+type WeakestWord = { word: string; q: number };
+
 function must(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
@@ -63,7 +65,8 @@ export async function POST(req: Request) {
     const durationSec = Number.isFinite(body.durationSec) ? Number(body.durationSec) : undefined;
 
     if (!fullName || !email) return Response.json({ error: "Full name & email are required." }, { status: 400 });
-    if (!text || text.split(/\s+/).filter(Boolean).length < 1) return Response.json({ error: "Reference text is required." }, { status: 400 });
+    if (!text || text.split(/\s+/).filter(Boolean).length < 1)
+      return Response.json({ error: "Reference text is required." }, { status: 400 });
     if (!audioKey) return Response.json({ error: "Missing audioKey." }, { status: 400 });
 
     // Load audio from R2
@@ -106,11 +109,12 @@ export async function POST(req: Request) {
       ? speechace.text_score.word_score_list
       : [];
 
-    const weakest = wordList
+    // ✅ FIX: give weakest a real type so TS can infer map callback types later
+    const weakest: WeakestWord[] = wordList
       .filter((w: any) => Number.isFinite(w?.quality_score))
       .map((w: any) => ({ word: String(w.word ?? ""), q: Number(w.quality_score) }))
-      .filter((w: { word: string; q: number }) => Boolean(w.word))
-      .sort((a: { word: string; q: number }, b: { word: string; q: number }) => a.q - b.q)
+      .filter((w: WeakestWord) => Boolean(w.word))
+      .sort((a: WeakestWord, b: WeakestWord) => a.q - b.q)
       .slice(0, 8);
 
     const pub = r2PublicBaseUrl();
@@ -123,7 +127,12 @@ export async function POST(req: Request) {
       `Dialect: ${dialect}\n` +
       (typeof durationSec === "number" ? `Duration: ${durationSec}s\n` : "") +
       `Overall: ${overall ?? "n/a"}\n` +
-      (weakest.length ? `Weakest words: ${weakest.map((w) => `${w.word}(${w.q.toFixed(0)})`).join(", ")}\n` : "") +
+      // ✅ FIX: explicitly type w
+      (weakest.length
+        ? `Weakest words: ${weakest
+            .map((w: WeakestWord) => `${w.word}(${w.q.toFixed(0)})`)
+            .join(", ")}\n`
+        : "") +
       (audioLink ? `Audio: ${audioLink}\n` : "") +
       `Text: ${text.slice(0, 220)}${text.length > 220 ? "…" : ""}`;
 
