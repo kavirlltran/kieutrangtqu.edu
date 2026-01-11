@@ -7,6 +7,7 @@ export type PhoneScore = {
 
 export type WordScoreListItem = {
   word?: string;
+  text?: string; //
   quality_score?: number | null;
 
   // timing fields may vary by API version
