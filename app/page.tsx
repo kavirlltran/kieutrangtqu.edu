@@ -525,17 +525,31 @@ export default function Page() {
         mr.onstop = async () => {
           try {
             if (timerRef.current) clearInterval(timerRef.current);
-            stream.getTracks().forEach((t) => t.stop());
+              stream.getTracks().forEach((t) => t.stop());
 
-            const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
-            await uploadThenScore(blob, secondsRef.current);
-          } catch (e: any) {
-            updateTaskState({ err: e?.message || "Stop recording failed" });
-          }
-        };
+              const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+
+              // ✅ Nếu blob rỗng: báo lỗi rõ
+              if (!blob || blob.size < 1000) {
+                updateTaskState({
+                  err:
+                    "Không thu được audio (blob rỗng). Hãy thử Chrome khác / cấp quyền micro lại / hoặc dùng Upload file.",
+                });
+                return;
+              }
+
+              await uploadThenScore(blob, secondsRef.current);
+            } catch (e: any) {
+              updateTaskState({ err: e?.message || "Stop recording failed" });
+            }
+          };
+
 
         mrRef.current = mr;
-        mr.start();
+
+        // QUAN TRỌNG: start theo timeslice để chắc chắn có ondataavailable
+        mr.start(250);
+
         setRecording(true);
         return;
       }
@@ -635,20 +649,35 @@ export default function Page() {
         endpoint = "/api/relevance";
       }
 
+      console.log("[score] task =", task, "endpoint =", endpoint, "payload =", payload);
+
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
-      });
+    });
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Scoring failed");
+    // ✅ đọc raw text trước để không phụ thuộc res.json()
+    const raw = await res.text();
+    console.log("[score] status =", res.status, "raw(head) =", raw?.slice(0, 200));
+    let json: any = null;
+    try {
+      json = raw ? JSON.parse(raw) : {};
+    } catch {
+      json = { raw }; // nếu API trả text/html thì vẫn có debug
+    }
 
-      updateTaskState({
-        result: { ...json, usedText: task === "reading" ? refText : undefined },
-        audioUrl: null,
-        audioUrlAt: null,
-      });
+    if (!res.ok) {
+      throw new Error(json?.error || json?.message || raw || "Scoring failed");
+    }
+
+    // ✅ luôn spread object an toàn
+    updateTaskState({
+      result: { ...(json ?? {}), usedText: task === "reading" ? refText : undefined },
+      audioUrl: null,
+      audioUrlAt: null,
+    });
+
     } catch (e: any) {
       updateTaskState({ err: e?.message || "Error" });
     } finally {
@@ -1152,7 +1181,11 @@ export default function Page() {
                 </button>
                 <span className="badge">Time: {seconds}s</span>
               </div>
-
+              {busy ? (
+                <div className="muted" style={{ marginTop: 8 }}>
+                  Đang upload &amp; chấm điểm... (đợi chút)
+                </div>
+              ) : null}
               <div className="divider" />
 
               <div className="field">
