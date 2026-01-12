@@ -920,6 +920,7 @@ const relevanceScore =
             onClick={() => {
               setHover(null);
               setClickPop(null);
+              updateTaskState({ uploadedFile: null }, "reading");
               setTask("reading");
             }}
             disabled={busy || recording}
@@ -932,6 +933,7 @@ const relevanceScore =
             onClick={() => {
               setHover(null);
               setClickPop(null);
+              updateTaskState({ uploadedFile: null }, "open-ended"); // ✅ vào tab là trống
               setTask("open-ended");
             }}
             disabled={busy || recording}
@@ -944,6 +946,7 @@ const relevanceScore =
             onClick={() => {
               setHover(null);
               setClickPop(null);
+              updateTaskState({ uploadedFile: null }, "relevance"); // ✅ vào tab là trống
               setTask("relevance");
             }}
             disabled={busy || recording}
@@ -1213,6 +1216,7 @@ const relevanceScore =
               <div className="field">
                 <label>Upload audio file (mp3/wav/webm/…)</label>
                 <input
+                  key={`file-${task}`} // ✅ đổi tab => input remount => UI file trống 100%
                   className="input"
                   type="file"
                   accept="audio/*"
@@ -1223,6 +1227,7 @@ const relevanceScore =
                   }}
                   disabled={busy || recording}
                 />
+
                 {uploadedFile ? (
                   <div className="muted" style={{ marginTop: 8 }}>
                     Selected: <b>{uploadedFile.name}</b>

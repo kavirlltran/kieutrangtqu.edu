@@ -1,5 +1,5 @@
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 120; // Premium cho audio dài, tránh Vercel timeout
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2Client, r2Bucket } from "@/lib/r2";
@@ -92,17 +92,34 @@ export async function POST(req: Request) {
       null;
 
     const relevanceClass = speechace?.speech_score?.relevance?.class ?? null;
+    const transcript = speechace?.speech_score?.transcript ?? null;
+
+    const ielts = speechace?.speech_score?.ielts_score ?? null;
+    const pte = speechace?.speech_score?.pte_score ?? null;
+    const toeic = speechace?.speech_score?.toeic_score ?? null;
+    const cefr = speechace?.speech_score?.cefr_score ?? null;
+
+    const issues = Array.isArray(speechace?.speech_score?.score_issue_list)
+  ? speechace.speech_score.score_issue_list
+  : [];
 
     return Response.json({
       ok: true,
       task: "relevance",
       overall,
       relevanceClass,
+      transcript,
+      ielts,
+      pte,
+      toeic,
+      cefr,
+      issues,
       dialect,
       audioKey,
       relevanceContext,
       speechace,
     });
+
   } catch (e: any) {
     return Response.json({ error: e?.message || "Server error" }, { status: 500 });
   }
