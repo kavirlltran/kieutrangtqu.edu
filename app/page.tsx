@@ -245,6 +245,8 @@ export default function Page() {
   // MediaRecorder path
   const mrRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const taskAtRecordRef = useRef<Task>("reading");
+
   // WAV fallback path
   const wavStopperRef = useRef<null | (() => Promise<{ blob: Blob; durationSec: number; mimeType: string }>)>(null);
 
@@ -490,6 +492,10 @@ export default function Page() {
   async function startRec() {
     resetRunState(task);
 
+    // ✅ ghi nhớ task lúc bắt đầu ghi để lưu result đúng tab
+    taskAtRecordRef.current = task;
+
+
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
 
     if (task === "reading" && wordsCount(refText) < 1) {
@@ -538,7 +544,7 @@ export default function Page() {
                 return;
               }
 
-              await uploadThenScore(blob, secondsRef.current);
+              await uploadThenScore(blob, secondsRef.current, taskAtRecordRef.current);
             } catch (e: any) {
               updateTaskState({ err: e?.message || "Stop recording failed" });
             }
@@ -599,13 +605,13 @@ export default function Page() {
     try {
       const rec = await stop();
       const dur = Number.isFinite(rec.durationSec) ? rec.durationSec : secondsRef.current;
-      await uploadThenScore(rec.blob, dur);
+      await uploadThenScore(rec.blob, dur, taskAtRecordRef.current);
     } catch (e: any) {
       updateTaskState({ err: e?.message || "Stop recording failed" });
     }
   }
 
-  async function uploadThenScore(audioBlob: Blob, durationSec?: number) {
+  async function uploadThenScore(audioBlob: Blob, durationSec?: number, t: Task = task) {
     try {
       setBusy(true);
       updateTaskState({ err: null });
@@ -637,18 +643,17 @@ export default function Page() {
 
       let endpoint = "/api/score";
 
-      if (task === "reading") {
+      if (t === "reading") {
         if (wordsCount(refText) < 1) throw new Error("Reference text is empty");
         payload.text = refText;
         endpoint = "/api/score";
-      } else if (task === "open-ended") {
+      } else if (t === "open-ended") {
         payload.prompt = openPrompt.trim();
         endpoint = "/api/open-ended";
       } else {
         payload.relevanceContext = relevanceContext.trim();
         endpoint = "/api/relevance";
       }
-
       console.log("[score] task =", task, "endpoint =", endpoint, "payload =", payload);
 
       const res = await fetch(endpoint, {
@@ -672,14 +677,17 @@ export default function Page() {
     }
 
     // ✅ luôn spread object an toàn
-    updateTaskState({
-      result: { ...(json ?? {}), usedText: task === "reading" ? refText : undefined },
-      audioUrl: null,
-      audioUrlAt: null,
-    });
+    updateTaskState(
+      {
+        result: { ...(json ?? {}), usedText: t === "reading" ? refText : undefined },
+        audioUrl: null,
+        audioUrlAt: null,
+      },
+      t
+    );
 
     } catch (e: any) {
-      updateTaskState({ err: e?.message || "Error" });
+      updateTaskState({ err: e?.message || "Error" }, t);
     } finally {
       setBusy(false);
     }
@@ -778,9 +786,23 @@ export default function Page() {
     task === "reading" &&
     tokens.some((t) => t.kind === "word" && t.attach && typeof t.attach.quality === "number");
 
-  const ielts = result?.ielts ?? result?.speechace?.ielts ?? result?.speechace?.ielts_score ?? null;
-  const relevanceClass = result?.relevanceClass ?? null;
-  const relevanceScore = result?.relevanceScore ?? null;
+  const ielts =
+  result?.ielts ??
+  result?.speechace?.ielts ??
+  result?.speechace?.ielts_score ??
+  result?.speechace?.speech_score?.ielts_score ??
+  null;
+
+  const relevanceClass =
+  result?.relevanceClass ??
+  result?.speechace?.speech_score?.relevance?.class ??
+  null;
+
+const relevanceScore =
+  result?.relevanceScore ??
+  result?.speechace?.speech_score?.relevance?.score ??
+  null;
+
 
   // ===== POPUP clamp =====
   const clampLeft = (x: number, w: number) =>
@@ -1338,17 +1360,33 @@ export default function Page() {
                       <div className="divider" />
                       <div style={{ fontWeight: 900, marginBottom: 8 }}>Tóm tắt</div>
 
-                      {task === "open-ended" && ielts ? (
-                        <div className="muted">
-                          IELTS (ước lượng): Fluency {ielts?.fluency ?? "n/a"} • Lexical {ielts?.lexical_resource ?? "n/a"} • Grammar {ielts?.grammar ?? "n/a"} • Pronunciation {ielts?.pronunciation ?? "n/a"}
-                        </div>
-                      ) : task === "relevance" ? (
-                        <div className="muted">
-                          Relevance class: <b>{relevanceClass ?? "n/a"}</b> {relevanceScore != null ? `• score: ${relevanceScore}` : ""}
+                      {task === "open-ended" ? (
+                        <>
+                          <div className="muted">
+                            Transcript:{" "}
+                            <b>{result?.speechace?.speech_score?.transcript ?? "n/a"}</b>
+                          </div>
+
+                      {ielts ? (
+                        <div className="muted" style={{ marginTop: 8 }}>
+                          IELTS (ước lượng): Fluency {ielts?.fluency ?? "n/a"} • Vocab{" "}
+                          {ielts?.vocab ?? "n/a"} • Grammar {ielts?.grammar ?? "n/a"} •
+                          Pronunciation {ielts?.pronunciation ?? "n/a"}
                         </div>
                       ) : (
-                        <div className="muted">Chưa có dữ liệu tóm tắt theo task này.</div>
+                        <div className="muted" style={{ marginTop: 8 }}>
+                          (Không có IELTS trong response)
+                        </div>
                       )}
+                    </>
+                  ) : task === "relevance" ? (
+                    <div className="muted">
+                      Relevance class: <b>{relevanceClass ?? "n/a"}</b>{" "}
+                      {relevanceScore != null ? `• score: ${relevanceScore}` : ""}
+                    </div>
+                  ) : (
+                    <div className="muted">Chưa có dữ liệu tóm tắt theo task này.</div>
+                  )}
 
                       <details style={{ marginTop: 12 }}>
                         <summary style={{ cursor: "pointer" }}>Xem JSON trả về (debug)</summary>
