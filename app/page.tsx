@@ -1214,7 +1214,7 @@ export default function Page() {
           <aside className="proSide">
             <div className="sideTabs">
               <button
-                className={`btn3d btnTask btnTaskReading ${task === "reading" ? "btnActive" : ""}`}
+                className={`btn3d tabBtn ${task === "reading" ? "tabBtnActive" : ""}`}
                 onClick={() => {
                   setHover(null);
                   setClickPop(null);
@@ -1226,7 +1226,7 @@ export default function Page() {
               </button>
 
               <button
-                className={`btn3d btnTask btnTaskOpen ${task === "open-ended" ? "btnActive" : ""}`}
+                className={`btn3d tabBtn ${task === "open-ended" ? "tabBtnActive" : ""}`}
                 onClick={() => {
                   setHover(null);
                   setClickPop(null);
@@ -1238,7 +1238,7 @@ export default function Page() {
               </button>
 
               <button
-                className={`btn3d btnTask btnTaskRel ${task === "relevance" ? "btnActive" : ""}`}
+                className={`btn3d tabBtn ${task === "relevance" ? "tabBtnActive" : ""}`}
                 onClick={() => {
                   setHover(null);
                   setClickPop(null);
@@ -1771,6 +1771,49 @@ export default function Page() {
 
         .btnActive {
           outline: 3px solid rgba(255, 255, 255, 0.35);
+        }
+        /* ===== Tabs: inactive dim, active bright (theo màu từng task) ===== */
+
+        /* Màu accent theo task (đang dùng themeClass trên .proGrid) */
+        .themeReading {
+          --tab1: #6366f1;
+          --tab2: #4338ca;
+          --tabShadow: rgba(67, 56, 202, 0.35);
+        }
+
+        .themeOpen {
+          --tab1: #22c55e;
+          --tab2: #16a34a;
+          --tabShadow: rgba(22, 163, 74, 0.35);
+        }
+        .themeRel {
+          --tab1: #f59e0b;
+          --tab2: #d97706;
+          --tabShadow: rgba(217, 119, 6, 0.35);
+        }
+        /* Tab thường (không chọn) => nhạt */
+        .tabBtn {
+          width: 100%;
+          justify-content: flex-start;
+          opacity: 0.55;
+          background: rgba(255, 255, 255, 0.78);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          box-shadow: 0 10px 0 rgba(15, 23, 42, 0.06), 0 16px 28px rgba(2, 6, 23, 0.10);
+        }
+
+        .tabBtn:hover {
+          opacity: 0.75;
+        }
+
+        /* Tab đang chọn => sáng + có màu theo task */
+        .tabBtnActive {
+          opacity: 1;
+          color: #fff;
+          background: linear-gradient(180deg, var(--tab1), var(--tab2));
+          box-shadow: 0 10px 0 var(--tabShadow), 0 16px 28px rgba(2, 6, 23, 0.22);
+        }
+        .tabBtnActive:hover {
+          filter: brightness(1.03);
         }
 
         /* Theme per task */
