@@ -233,6 +233,7 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // playback anti-race
   const playTokenRef = useRef(0);
@@ -267,6 +268,16 @@ export default function Page() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    // Đổi tab: reset file picker DOM + reset state uploadedFile của tab đang vào
+    try {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch {}
+
+    updateTaskState({ uploadedFile: null }, task);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task]);
 
   useEffect(() => {
     const raw = localStorage.getItem(USER_PASSAGES_STORAGE_KEY);
@@ -495,7 +506,6 @@ export default function Page() {
     // ✅ ghi nhớ task lúc bắt đầu ghi để lưu result đúng tab
     taskAtRecordRef.current = task;
 
-
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
 
     if (task === "reading" && wordsCount(refText) < 1) {
@@ -515,10 +525,11 @@ export default function Page() {
 
     try {
       const gum = (navigator as any)?.mediaDevices?.getUserMedia;
-      if (!gum)
+      if (!gum) {
         throw new Error(
           "Trình duyệt không hỗ trợ getUserMedia (hoặc đang chạy HTTP). Hãy dùng HTTPS hoặc Upload audio."
         );
+      }
 
       if (hasMediaRecorder()) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -531,25 +542,24 @@ export default function Page() {
         mr.onstop = async () => {
           try {
             if (timerRef.current) clearInterval(timerRef.current);
-              stream.getTracks().forEach((t) => t.stop());
+            stream.getTracks().forEach((t) => t.stop());
 
-              const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+            const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
 
-              // ✅ Nếu blob rỗng: báo lỗi rõ
-              if (!blob || blob.size < 1000) {
-                updateTaskState({
-                  err:
-                    "Không thu được audio (blob rỗng). Hãy thử Chrome khác / cấp quyền micro lại / hoặc dùng Upload file.",
-                });
-                return;
-              }
-
-              await uploadThenScore(blob, secondsRef.current, taskAtRecordRef.current);
-            } catch (e: any) {
-              updateTaskState({ err: e?.message || "Stop recording failed" });
+            // ✅ Nếu blob rỗng: báo lỗi rõ
+            if (!blob || blob.size < 1000) {
+              updateTaskState({
+                err:
+                  "Không thu được audio (blob rỗng). Hãy thử Chrome khác / cấp quyền micro lại / hoặc dùng Upload file.",
+              });
+              return;
             }
-          };
 
+            await uploadThenScore(blob, secondsRef.current, taskAtRecordRef.current);
+          } catch (e: any) {
+            updateTaskState({ err: e?.message || "Stop recording failed" });
+          }
+        };
 
         mrRef.current = mr;
 
@@ -614,7 +624,7 @@ export default function Page() {
   async function uploadThenScore(audioBlob: Blob, durationSec?: number, t: Task = task) {
     try {
       setBusy(true);
-      updateTaskState({ err: null });
+      updateTaskState({ err: null }, t);
 
       const up = await fetch("/api/upload-url", {
         method: "POST",
@@ -654,38 +664,38 @@ export default function Page() {
         payload.relevanceContext = relevanceContext.trim();
         endpoint = "/api/relevance";
       }
-      console.log("[score] task =", task, "endpoint =", endpoint, "payload =", payload);
+
+      console.log("[score] task =", t, "endpoint =", endpoint, "payload =", payload);
 
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
-    });
+      });
 
-    // ✅ đọc raw text trước để không phụ thuộc res.json()
-    const raw = await res.text();
-    console.log("[score] status =", res.status, "raw(head) =", raw?.slice(0, 200));
-    let json: any = null;
-    try {
-      json = raw ? JSON.parse(raw) : {};
-    } catch {
-      json = { raw }; // nếu API trả text/html thì vẫn có debug
-    }
+      // ✅ đọc raw text trước để không phụ thuộc res.json()
+      const raw = await res.text();
+      console.log("[score] status =", res.status, "raw(head) =", raw?.slice(0, 200));
 
-    if (!res.ok) {
-      throw new Error(json?.error || json?.message || raw || "Scoring failed");
-    }
+      let json: any = null;
+      try {
+        json = raw ? JSON.parse(raw) : {};
+      } catch {
+        json = { raw }; // nếu API trả text/html thì vẫn có debug
+      }
 
-    // ✅ luôn spread object an toàn
-    updateTaskState(
-      {
-        result: { ...(json ?? {}), usedText: t === "reading" ? refText : undefined },
-        audioUrl: null,
-        audioUrlAt: null,
-      },
-      t
-    );
+      if (!res.ok) {
+        throw new Error(json?.error || json?.message || raw || "Scoring failed");
+      }
 
+      updateTaskState(
+        {
+          result: { ...(json ?? {}), usedText: t === "reading" ? refText : undefined },
+          audioUrl: null,
+          audioUrlAt: null,
+        },
+        t
+      );
     } catch (e: any) {
       updateTaskState({ err: e?.message || "Error" }, t);
     } finally {
@@ -697,9 +707,10 @@ export default function Page() {
     resetRunState(task);
     if (!uploadedFile) return;
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
-    if (task === "reading" && wordsCount(refText) < 1)
+    if (task === "reading" && wordsCount(refText) < 1) {
       return updateTaskState({ err: "Bạn phải nạp Reference text trước khi chấm." });
-    await uploadThenScore(uploadedFile, undefined);
+    }
+    await uploadThenScore(uploadedFile, undefined, task);
   }
 
   // Fetch audioUrl when current task result has audioKey (and keep per task)
@@ -783,26 +794,13 @@ export default function Page() {
   }, [task, usedText, wordDisplays]);
 
   const hasHighlight =
-    task === "reading" &&
-    tokens.some((t) => t.kind === "word" && t.attach && typeof t.attach.quality === "number");
-
-  const ielts =
-  result?.ielts ??
-  result?.speechace?.ielts ??
-  result?.speechace?.ielts_score ??
-  result?.speechace?.speech_score?.ielts_score ??
-  null;
+    task === "reading" && tokens.some((t) => t.kind === "word" && t.attach && typeof t.attach.quality === "number");
 
   const relevanceClass =
-  result?.relevanceClass ??
-  result?.speechace?.speech_score?.relevance?.class ??
-  null;
+    (result?.relevanceClass ?? speechace?.speech_score?.relevance?.class ?? speechace?.relevance?.class ?? null) as any;
 
-const relevanceScore =
-  result?.relevanceScore ??
-  result?.speechace?.speech_score?.relevance?.score ??
-  null;
-
+  const relevanceScore =
+    (result?.relevanceScore ?? speechace?.speech_score?.relevance?.score ?? speechace?.relevance?.score ?? null) as any;
 
   // ===== POPUP clamp =====
   const clampLeft = (x: number, w: number) =>
@@ -834,7 +832,7 @@ const relevanceScore =
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                   <div style={{ fontWeight: 900 }}>{clickPop.w.word}</div>
-                  <span className="badge">
+                  <span className="badge accentBadge">
                     {clickPop.w.quality == null ? "n/a" : (clickPop.w.quality as number).toFixed(0)}
                   </span>
                 </div>
@@ -883,7 +881,9 @@ const relevanceScore =
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                   <div style={{ fontWeight: 900 }}>{hover.w.word}</div>
-                  <span className="badge">{hover.w.quality == null ? "n/a" : (hover.w.quality as number).toFixed(0)}</span>
+                  <span className="badge accentBadge">
+                    {hover.w.quality == null ? "n/a" : (hover.w.quality as number).toFixed(0)}
+                  </span>
                 </div>
 
                 <div className="muted" style={{ marginTop: 6 }}>
@@ -900,6 +900,302 @@ const relevanceScore =
         )
       : null;
 
+  const themeClass = task === "reading" ? "themeReading" : task === "open-ended" ? "themeOpen" : "themeRel";
+
+  const scoreObj =
+    task === "reading"
+      ? speechace?.text_score?.speechace_score ?? speechace?.speechace_score ?? null
+      : speechace?.speech_score?.speechace_score ?? speechace?.speechace_score ?? null;
+
+  const ieltsObj =
+    task === "reading"
+      ? speechace?.text_score?.ielts_score ?? speechace?.ielts_score ?? null
+      : speechace?.speech_score?.ielts_score ?? speechace?.ielts_score ?? null;
+
+  const pteObj =
+    task === "reading"
+      ? speechace?.text_score?.pte_score ?? speechace?.pte_score ?? null
+      : speechace?.speech_score?.pte_score ?? speechace?.pte_score ?? null;
+
+  const toeicObj =
+    task === "reading"
+      ? speechace?.text_score?.toeic_score ?? speechace?.toeic_score ?? null
+      : speechace?.speech_score?.toeic_score ?? speechace?.toeic_score ?? null;
+
+  const cefrObj =
+    task === "reading"
+      ? speechace?.text_score?.cefr_score ?? speechace?.cefr_score ?? null
+      : speechace?.speech_score?.cefr_score ?? speechace?.cefr_score ?? null;
+
+  const issueList =
+    (task === "reading"
+      ? speechace?.text_score?.score_issue_list ?? speechace?.score_issue_list
+      : speechace?.speech_score?.score_issue_list ?? speechace?.score_issue_list) || [];
+
+  const transcript =
+    task === "reading"
+      ? speechace?.text_score?.transcript ?? speechace?.transcript ?? ""
+      : speechace?.speech_score?.transcript ?? speechace?.speech_score?.transcription ?? speechace?.transcript ?? "";
+
+  const norm100 = (v: any) => {
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(100, n));
+  };
+
+  const Metric = ({ label, value, sub }: { label: string; value: any; sub?: string }) => {
+    const vv = norm100(value);
+    return (
+      <div className="metricCardPro">
+        <div className="metricTop">
+          <div className="metricLabel">{label}</div>
+          <div className="metricValue">{vv == null ? "n/a" : vv.toFixed(0)}</div>
+        </div>
+        <div className="bar">
+          <div className="barFill" style={{ width: `${vv == null ? 0 : vv}%` }} />
+        </div>
+        {sub ? <div className="metricSub">{sub}</div> : null}
+      </div>
+    );
+  };
+
+  const resultsPanel = (
+    <div>
+      <div className="resultsHeader">
+        <div>
+          <div className="resultsTitle">Kết quả chấm</div>
+          <div className="resultsSub">
+            {task === "reading"
+              ? "Reading (tham chiếu theo reference text)"
+              : task === "open-ended"
+              ? "Open-ended (tự do theo prompt)"
+              : "Relevance (đúng/ngữ cảnh theo context)"}
+          </div>
+        </div>
+
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <span className="badge accentBadge">{task}</span>
+          {typeof overall === "number" ? <span className="badge accentBadge">Overall: {overall.toFixed(1)}</span> : null}
+          {busy ? <span className="badge">⏳ Đang chấm…</span> : null}
+        </div>
+      </div>
+
+      {err ? <div className="alertError">Lỗi: {err}</div> : null}
+
+      {!result ? (
+        <div className="muted" style={{ marginTop: 12 }}>
+          Chưa có kết quả. Hãy ghi âm hoặc upload file ở menu bên trái rồi bấm chấm.
+        </div>
+      ) : (
+        <>
+          {/* DASHBOARD */}
+          <div className="dashGrid">
+            <Metric label="Overall" value={scoreObj?.overall ?? overall} />
+            <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
+            <Metric label="Fluency" value={scoreObj?.fluency} />
+            <Metric label="Grammar" value={scoreObj?.grammar} />
+            <Metric label="Vocabulary" value={scoreObj?.vocab} />
+            <Metric label="Coherence" value={scoreObj?.coherence} />
+          </div>
+
+          <div className="quickRow">
+            {cefrObj ? (
+              <div className="quickCard">
+                <div className="quickTitle">CEFR</div>
+                <div className="quickText">
+                  Pron <b>{cefrObj?.pronunciation ?? "n/a"}</b> • Flu <b>{cefrObj?.fluency ?? "n/a"}</b> • Gram{" "}
+                  <b>{cefrObj?.grammar ?? "n/a"}</b> • Coh <b>{cefrObj?.coherence ?? "n/a"}</b> • Vocab{" "}
+                  <b>{cefrObj?.vocab ?? "n/a"}</b> • Overall <b>{cefrObj?.overall ?? "n/a"}</b>
+                </div>
+              </div>
+            ) : null}
+
+            {ieltsObj ? (
+              <div className="quickCard">
+                <div className="quickTitle">IELTS (ước lượng)</div>
+                <div className="quickText">
+                  Pron <b>{ieltsObj?.pronunciation ?? "n/a"}</b> • Flu <b>{ieltsObj?.fluency ?? "n/a"}</b> • Gram{" "}
+                  <b>{ieltsObj?.grammar ?? "n/a"}</b> • Coh <b>{ieltsObj?.coherence ?? "n/a"}</b> • Vocab{" "}
+                  <b>{ieltsObj?.vocab ?? ieltsObj?.lexical_resource ?? "n/a"}</b>
+                </div>
+              </div>
+            ) : null}
+
+            {pteObj ? (
+              <div className="quickCard">
+                <div className="quickTitle">PTE</div>
+                <div className="quickText">
+                  Pron <b>{pteObj?.pronunciation ?? "n/a"}</b> • Flu <b>{pteObj?.fluency ?? "n/a"}</b> • Gram{" "}
+                  <b>{pteObj?.grammar ?? "n/a"}</b> • Coh <b>{pteObj?.coherence ?? "n/a"}</b> • Vocab{" "}
+                  <b>{pteObj?.vocab ?? "n/a"}</b>
+                </div>
+              </div>
+            ) : null}
+
+            {toeicObj ? (
+              <div className="quickCard">
+                <div className="quickTitle">TOEIC</div>
+                <div className="quickText">
+                  Pron <b>{toeicObj?.pronunciation ?? "n/a"}</b> • Flu <b>{toeicObj?.fluency ?? "n/a"}</b> • Gram{" "}
+                  <b>{toeicObj?.grammar ?? "n/a"}</b> • Coh <b>{toeicObj?.coherence ?? "n/a"}</b> • Vocab{" "}
+                  <b>{toeicObj?.vocab ?? "n/a"}</b>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Audio */}
+          <div className="divider" style={{ marginTop: 14 }} />
+          <div style={{ marginTop: 12 }}>
+            {audioUrl ? (
+              <audio
+                ref={audioRef}
+                src={audioUrl}
+                controls
+                style={{ width: "100%" }}
+                onError={() => {
+                  void ensureFreshAudioUrl();
+                }}
+              />
+            ) : (
+              <div className="muted">Chưa có audioUrl (nếu R2 private thì cần presign).</div>
+            )}
+          </div>
+
+          {/* Task detail */}
+          <div className="divider" style={{ marginTop: 14 }} />
+
+          {task === "relevance" ? (
+            <div className="relBox">
+              <div className="relRow">
+                <span className={`relPill ${String(relevanceClass).toUpperCase() === "TRUE" ? "relTrue" : "relFalse"}`}>
+                  {relevanceClass ?? "n/a"}
+                </span>
+                {relevanceScore != null ? <span className="badge accentBadge">score: {relevanceScore}</span> : null}
+              </div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                Tip: Relevance chấm **đúng ngữ cảnh** theo context. Nói lệch đề → class FALSE.
+              </div>
+            </div>
+          ) : null}
+
+          {task === "open-ended" ? (
+            <div className="relBox">
+              <div style={{ fontWeight: 900 }}>Transcript</div>
+              <div style={{ marginTop: 6, lineHeight: 1.6 }}>
+                <b>{transcript || "n/a"}</b>
+              </div>
+            </div>
+          ) : null}
+
+          {task === "reading" ? (
+            <>
+              <div style={{ fontWeight: 900, marginBottom: 8, marginTop: 12 }}>Highlight theo word-score</div>
+
+              {!hasHighlight ? (
+                <div className="muted">
+                  Chưa thấy word_score_list để highlight. Nếu SpeechAce trả về word_score_list, UI sẽ bôi màu theo quality_score.
+                </div>
+              ) : null}
+
+              <div style={{ lineHeight: 2, fontSize: 16, marginTop: 8 }}>
+                {tokens.map((t, idx) => {
+                  if (t.kind === "space") return <span key={idx}>{t.text}</span>;
+                  if (t.kind === "punct") return <span key={idx}>{t.text}</span>;
+
+                  const w = t.attach;
+                  const band = qualityBand(w?.quality ?? null);
+
+                  const style: CSSProperties =
+                    band === "good"
+                      ? { background: "rgba(34,197,94,.12)", border: "1px solid rgba(34,197,94,.18)" }
+                      : band === "warn"
+                      ? { background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.20)" }
+                      : band === "bad"
+                      ? { background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.18)" }
+                      : {};
+
+                  return (
+                    <span
+                      key={idx}
+                      style={{
+                        ...style,
+                        padding: "2px 6px",
+                        borderRadius: 10,
+                        cursor: w && audioUrl ? "pointer" : "default",
+                        userSelect: "none",
+                      }}
+                      title={w ? formatPhonesForTooltip(w) : ""}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!w) return;
+                        setClickPop({ w, x: e.clientX, y: e.clientY });
+                        void playWord(w);
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!w) return;
+                        setHover({ w, x: e.clientX, y: e.clientY });
+                      }}
+                      onMouseMove={(e) => {
+                        if (!w) return;
+                        setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : { w, x: e.clientX, y: e.clientY }));
+                      }}
+                      onMouseLeave={() => setHover(null)}
+                    >
+                      {t.text}
+                    </span>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {/* Warnings / issues */}
+          {Array.isArray(issueList) && issueList.length ? (
+            <>
+              <div className="divider" style={{ marginTop: 14 }} />
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Cảnh báo / Issues</div>
+              <div className="issueWrap">
+                {issueList.slice(0, 12).map((it: any, idx: number) => {
+                  const st = String(it?.status || "").toLowerCase();
+                  const cls = st === "warning" ? "issueWarn" : st === "error" ? "issueErr" : "issueInfo";
+                  return (
+                    <div key={idx} className={`issuePill ${cls}`} title={String(it?.detail_message || "")}>
+                      {String(it?.short_message || it?.source || "issue")}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {/* Debug */}
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer" }}>Xem JSON trả về (debug)</summary>
+            <pre
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                background: "rgba(255,255,255,.9)",
+                overflowX: "auto",
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+            >
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </details>
+
+          <p className="muted" style={{ textAlign: "center", marginTop: 12 }}>
+            *Audio user phát lại qua presigned URL (R2). Sample là Browser TTS.
+          </p>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div
       className="container"
@@ -913,535 +1209,852 @@ const relevanceScore =
           Reading / Open-ended / Relevance. Upload hoặc ghi âm → chấm. (Audio user phát lại qua presigned URL; mẫu phát âm dùng Browser TTS nếu cần.)
         </p>
 
-        {/* Tabs */}
-        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-          <button
-            className={`btn3d ${task === "reading" ? "btnPrimary btnActive" : ""}`}
-            onClick={() => {
-              setHover(null);
-              setClickPop(null);
-              updateTaskState({ uploadedFile: null }, "reading");
-              setTask("reading");
-            }}
-            disabled={busy || recording}
-          >
-            📘 Reading
-          </button>
+        <div className={`proGrid ${themeClass}`}>
+          {/* LEFT: MENU */}
+          <aside className="proSide">
+            <div className="sideTabs">
+              <button
+                className={`btn3d btnTask btnTaskReading ${task === "reading" ? "btnActive" : ""}`}
+                onClick={() => {
+                  setHover(null);
+                  setClickPop(null);
+                  setTask("reading");
+                }}
+                disabled={busy || recording}
+              >
+                📘 Reading
+              </button>
 
-          <button
-            className={`btn3d ${task === "open-ended" ? "btnPrimary btnActive" : ""}`}
-            onClick={() => {
-              setHover(null);
-              setClickPop(null);
-              updateTaskState({ uploadedFile: null }, "open-ended"); // ✅ vào tab là trống
-              setTask("open-ended");
-            }}
-            disabled={busy || recording}
-          >
-            🗣️ Open-ended
-          </button>
+              <button
+                className={`btn3d btnTask btnTaskOpen ${task === "open-ended" ? "btnActive" : ""}`}
+                onClick={() => {
+                  setHover(null);
+                  setClickPop(null);
+                  setTask("open-ended");
+                }}
+                disabled={busy || recording}
+              >
+                🗣️ Open-ended
+              </button>
 
-          <button
-            className={`btn3d ${task === "relevance" ? "btnPrimary btnActive" : ""}`}
-            onClick={() => {
-              setHover(null);
-              setClickPop(null);
-              updateTaskState({ uploadedFile: null }, "relevance"); // ✅ vào tab là trống
-              setTask("relevance");
-            }}
-            disabled={busy || recording}
-          >
-            🎯 Relevance
-          </button>
-        </div>
-
-        <div className="divider" style={{ marginTop: 16 }} />
-
-        <div className="appGrid">
-          <div className="leftCol">
-            {/* User Info */}
-            <div className="section">
-              <div className="sectionTitle">
-                <span>Thông tin người dùng</span>
-                <span className="badge">Dialect: {dialect}</span>
-              </div>
-
-              <div className="grid2">
-                <div className="field">
-                  <label>Họ tên (bắt buộc)</label>
-                  <input
-                    className="input"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Email (bắt buộc)</label>
-                  <input
-                    className="input"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                  />
-                </div>
-              </div>
-
-              <div className="divider" />
-
-              <div className="grid2">
-                <div className="field">
-                  <label>Dialect</label>
-                  <select
-                    className="select"
-                    value={dialect}
-                    onChange={(e) => setDialect(e.target.value as any)}
-                    disabled={busy || recording}
-                  >
-                    {DIALECTS.map((d) => (
-                      <option key={d} value={d}>
-                        {d === "en-gb" ? "English (UK) — en-gb" : "English (US) — en-us"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="field">
-                  <label>Chế độ chấm (premium)</label>
-                  <select
-                    className="select"
-                    value={pronunciationScoreMode}
-                    onChange={(e) => setPronunciationScoreMode(e.target.value as any)}
-                    disabled={busy || recording}
-                  >
-                    <option value="default">Default</option>
-                    <option value="strict">Strict</option>
-                  </select>
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    Strict thường khó hơn (phù hợp luyện thi / chấm gắt).
-                  </div>
-                </div>
-              </div>
-
-              <div className="row" style={{ marginTop: 10 }}>
-                <label className="row" style={{ gap: 10, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={detectDialect}
-                    onChange={(e) => setDetectDialect(e.target.checked)}
-                    disabled={busy || recording}
-                  />
-                  <span className="muted">Detect dialect (SpeechAce)</span>
-                </label>
-              </div>
+              <button
+                className={`btn3d btnTask btnTaskRel ${task === "relevance" ? "btnActive" : ""}`}
+                onClick={() => {
+                  setHover(null);
+                  setClickPop(null);
+                  setTask("relevance");
+                }}
+                disabled={busy || recording}
+              >
+                🎯 Relevance
+              </button>
             </div>
 
-            {/* Task-specific input */}
-            {task === "reading" ? (
+            <div className="divider" style={{ marginTop: 14 }} />
+
+            <div className="sideScroll">
+              {/* USER INFO */}
               <div className="section">
                 <div className="sectionTitle">
-                  <span>Reference text</span>
-                  <span className="badge">Words: {wordsCount(refText)}</span>
+                  <span>Thông tin người dùng</span>
+                  <span className="badge accentBadge">Dialect: {dialect}</span>
                 </div>
 
                 <div className="grid2">
                   <div className="field">
-                    <label>Reference source</label>
-                    <div className="row">
-                      <button
-                        className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`}
-                        onClick={() => setMode("library")}
-                        disabled={busy || recording}
-                      >
-                        Văn mẫu
-                      </button>
-                      <button
-                        className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`}
-                        onClick={() => setMode("custom")}
-                        disabled={busy || recording}
-                      >
-                        User dán text
-                      </button>
-                    </div>
+                    <label>Họ tên (bắt buộc)</label>
+                    <input
+                      className="input"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Nguyễn Văn A"
+                      disabled={busy || recording}
+                    />
                   </div>
 
                   <div className="field">
-                    <label>Mẫu phát âm chuẩn</label>
-                    <button
-                      className="btn3d"
-                      onClick={() => toggleTts(refText || selected?.text || "")}
-                      disabled={busy || recording || wordsCount(refText || selected?.text || "") < 1}
-                      style={{ width: "100%" }}
+                    <label>Email (bắt buộc)</label>
+                    <input
+                      className="input"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      disabled={busy || recording}
+                    />
+                  </div>
+                </div>
+
+                <div className="divider" style={{ marginTop: 12 }} />
+
+                <div className="grid2">
+                  <div className="field">
+                    <label>Dialect</label>
+                    <select
+                      className="select"
+                      value={dialect}
+                      onChange={(e) => setDialect(e.target.value as any)}
+                      disabled={busy || recording}
                     >
-                      {ttsSpeaking ? "⏹ Stop mẫu (TTS)" : "🔈 Play mẫu (TTS)"}
-                    </button>
+                      {DIALECTS.map((d) => (
+                        <option key={d} value={d}>
+                          {d === "en-gb" ? "English (UK) — en-gb" : "English (US) — en-us"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>Chế độ chấm (premium)</label>
+                    <select
+                      className="select"
+                      value={pronunciationScoreMode}
+                      onChange={(e) => setPronunciationScoreMode(e.target.value as any)}
+                      disabled={busy || recording}
+                    >
+                      <option value="default">Default</option>
+                      <option value="strict">Strict</option>
+                    </select>
                     <div className="muted" style={{ marginTop: 6 }}>
-                      *Browser TTS (nếu SpeechAce không cung cấp audio mẫu).
+                      Strict thường khó hơn (phù hợp luyện thi / chấm gắt).
                     </div>
                   </div>
                 </div>
 
-                <div className="divider" />
+                <div className="row" style={{ marginTop: 10 }}>
+                  <label className="row" style={{ gap: 10, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={detectDialect}
+                      onChange={(e) => setDetectDialect(e.target.checked)}
+                      disabled={busy || recording}
+                    />
+                    <span className="muted">Detect dialect (SpeechAce)</span>
+                  </label>
+                </div>
+              </div>
 
-                {mode === "library" ? (
-                  <>
+              {/* TASK INPUT */}
+              {task === "reading" ? (
+                <div className="section">
+                  <div className="sectionTitle">
+                    <span>Reference text</span>
+                    <span className="badge accentBadge">Words: {wordsCount(refText)}</span>
+                  </div>
+
+                  <div className="grid2">
                     <div className="field">
-                      <label>Chọn văn mẫu</label>
-                      <select
-                        className="select"
-                        value={selectedId}
-                        onChange={(e) => setSelectedId(e.target.value)}
-                        disabled={busy || recording}
-                      >
-                        {passages.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.title}
-                          </option>
-                        ))}
-                      </select>
+                      <label>Reference source</label>
+                      <div className="row" style={{ flexWrap: "wrap" }}>
+                        <button
+                          className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`}
+                          onClick={() => setMode("library")}
+                          disabled={busy || recording}
+                        >
+                          Văn mẫu
+                        </button>
+                        <button
+                          className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`}
+                          onClick={() => setMode("custom")}
+                          disabled={busy || recording}
+                        >
+                          User dán text
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="divider" />
-
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 14,
-                        padding: 12,
-                        background: "rgba(255,255,255,.92)",
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      {selected?.text || ""}
-                    </div>
-                  </>
-                ) : (
-                  <>
                     <div className="field">
-                      <label>Tiêu đề (tuỳ chọn - để lưu vào thư viện)</label>
-                      <input
-                        className="input"
-                        value={customTitle}
-                        onChange={(e) => setCustomTitle(e.target.value)}
-                        disabled={busy || recording}
-                        placeholder="My passage"
-                      />
-                    </div>
-
-                    <div className="field" style={{ marginTop: 10 }}>
-                      <label>Reference text (bắt buộc)</label>
-                      <textarea
-                        className="textarea"
-                        value={customText}
-                        onChange={(e) => setCustomText(e.target.value)}
-                        disabled={busy || recording}
-                        placeholder="Dán đoạn bạn muốn user đọc..."
-                      />
-                    </div>
-
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <button className="btn3d" onClick={addCustomPassageToLibrary} disabled={busy || recording}>
-                        Lưu vào thư viện
-                      </button>
-                      <span className="badge">Words: {wordsCount(customText)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : task === "open-ended" ? (
-              <div className="section">
-                <div className="sectionTitle">
-                  <span>Open-ended prompt</span>
-                  <span className="badge">IELTS feedback: {ielts ? "ON" : "n/a"}</span>
-                </div>
-                <div className="field">
-                  <label>Prompt</label>
-                  <textarea
-                    className="textarea"
-                    value={openPrompt}
-                    onChange={(e) => setOpenPrompt(e.target.value)}
-                    disabled={busy || recording}
-                  />
-                </div>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  Tip: nói tự nhiên 20–45s, có mở bài – thân bài – kết.
-                </div>
-              </div>
-            ) : (
-              <div className="section">
-                <div className="sectionTitle">
-                  <span>Relevance context</span>
-                  <span className="badge">Class: {relevanceClass ?? "n/a"}</span>
-                </div>
-                <div className="field">
-                  <label>Context</label>
-                  <textarea
-                    className="textarea"
-                    value={relevanceContext}
-                    onChange={(e) => setRelevanceContext(e.target.value)}
-                    disabled={busy || recording}
-                  />
-                </div>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  Tip: nói đúng trọng tâm đề bài để relevance lên class cao.
-                </div>
-              </div>
-            )}
-
-            {/* Record / Upload */}
-            <div className="section">
-              <div className="sectionTitle">
-                <span>Ghi âm / Upload audio</span>
-                <span className="badge">Recorder: {recorderName}</span>
-              </div>
-
-              <div className="row">
-                <button className="btn3d btnPrimary" onClick={() => void startRec()} disabled={busy || recording}>
-                  🎙️ Bắt đầu ghi
-                </button>
-                <button className="btn3d btnDanger" onClick={() => void stopRec()} disabled={busy || !recording}>
-                  ⏹ Dừng ({seconds}s)
-                </button>
-                <span className="badge">Time: {seconds}s</span>
-              </div>
-              {busy ? (
-                <div className="muted" style={{ marginTop: 8 }}>
-                  Đang upload &amp; chấm điểm... (đợi chút)
-                </div>
-              ) : null}
-              <div className="divider" />
-
-              <div className="field">
-                <label>Upload audio file (mp3/wav/webm/…)</label>
-                <input
-                  key={`file-${task}`} // ✅ đổi tab => input remount => UI file trống 100%
-                  className="input"
-                  type="file"
-                  accept="audio/*"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] || null;
-                    resetRunState(task);
-                    updateTaskState({ uploadedFile: f });
-                  }}
-                  disabled={busy || recording}
-                />
-
-                {uploadedFile ? (
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    Selected: <b>{uploadedFile.name}</b>
-                  </div>
-                ) : null}
-
-                <button
-                  className="btn3d btnPrimary"
-                  onClick={() => void scoreUploadedFile()}
-                  disabled={busy || recording || !uploadedFile}
-                  style={{ width: "100%", marginTop: 10 }}
-                >
-                  Chấm file upload
-                </button>
-              </div>
-
-              {err ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,0,0,.25)",
-                    background: "rgba(255,0,0,.06)",
-                  }}
-                >
-                  <b>Lỗi:</b> {err}
-                </div>
-              ) : null}
-
-              {!result ? (
-                <div className="muted" style={{ marginTop: 12 }}>
-                  Chưa có kết quả. Hãy ghi âm hoặc upload file rồi chấm.
-                </div>
-              ) : (
-                <>
-                  <div className="divider" />
-
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 900 }}>
-                      Kết quả {typeof overall === "number" ? `(Overall: ${overall.toFixed(1)})` : ""}
-                    </div>
-                    {task === "relevance" && relevanceScore != null ? (
-                      <span className="badge">Score: {relevanceScore}</span>
-                    ) : null}
-                  </div>
-
-                  {audioUrl ? (
-                    <div style={{ marginTop: 10 }}>
-                      <audio
-                        ref={audioRef}
-                        src={audioUrl}
-                        controls
+                      <label>Mẫu phát âm chuẩn</label>
+                      <button
+                        className="btn3d"
+                        onClick={() => toggleTts(refText || selected?.text || "")}
+                        disabled={busy || recording || wordsCount(refText || selected?.text || "") < 1}
                         style={{ width: "100%" }}
-                        onError={() => {
-                          // nếu url hết hạn, tự xin lại
-                          void ensureFreshAudioUrl();
-                        }}
-                      />
-                      {task === "reading" ? (
-                        <div className="muted" style={{ marginTop: 10 }}>
-                          click vào từ để nghe lại đúng từ
-                        </div>
-                      ) : null}
+                      >
+                        {ttsSpeaking ? "⏹ Stop mẫu (TTS)" : "🔈 Play mẫu (TTS)"}
+                      </button>
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        *Browser TTS (nếu SpeechAce không cung cấp audio mẫu).
+                      </div>
                     </div>
-                  ) : (
-                    <div className="muted" style={{ marginTop: 10 }}>
-                      Chưa có audioUrl (nếu R2 private thì cần presign).
-                    </div>
-                  )}
+                  </div>
 
-                  {task === "reading" ? (
+                  <div className="divider" style={{ marginTop: 12 }} />
+
+                  {mode === "library" ? (
                     <>
-                      <div className="divider" />
-                      <div style={{ fontWeight: 900, marginBottom: 8 }}>Highlight theo word-score</div>
+                      <div className="field">
+                        <label>Chọn văn mẫu</label>
+                        <select
+                          className="select"
+                          value={selectedId}
+                          onChange={(e) => setSelectedId(e.target.value)}
+                          disabled={busy || recording}
+                        >
+                          {passages.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                      {!hasHighlight ? (
-                        <div className="muted">
-                          Chưa thấy word_score_list để highlight. Nếu SpeechAce trả về word_score_list, UI sẽ bôi màu theo quality_score.
-                        </div>
-                      ) : null}
+                      <div className="divider" style={{ marginTop: 12 }} />
 
-                      <div style={{ lineHeight: 2, fontSize: 16 }}>
-                        {tokens.map((t, idx) => {
-                          if (t.kind === "space") return <span key={idx}>{t.text}</span>;
-                          if (t.kind === "punct") return <span key={idx}>{t.text}</span>;
-
-                          const w = t.attach;
-                          const band = qualityBand(w?.quality ?? null);
-
-                          const style: CSSProperties =
-                            band === "good"
-                              ? { background: "rgba(34,197,94,.12)", border: "1px solid rgba(34,197,94,.18)" }
-                              : band === "warn"
-                              ? { background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.20)" }
-                              : band === "bad"
-                              ? { background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.18)" }
-                              : {};
-
-                          return (
-                            <span
-                              key={idx}
-                              style={{
-                                ...style,
-                                padding: "2px 6px",
-                                borderRadius: 10,
-                                cursor: w && audioUrl ? "pointer" : "default",
-                                userSelect: "none",
-                              }}
-                              title={w ? formatPhonesForTooltip(w) : ""}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!w) return;
-                                setClickPop({ w, x: e.clientX, y: e.clientY });
-                                void playWord(w);
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!w) return;
-                                setHover({ w, x: e.clientX, y: e.clientY });
-                              }}
-                              onMouseMove={(e) => {
-                                if (!w) return;
-                                setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : { w, x: e.clientX, y: e.clientY }));
-                              }}
-                              onMouseLeave={() => setHover(null)}
-                            >
-                              {t.text}
-                            </span>
-                          );
-                        })}
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 14,
+                          padding: 12,
+                          background: "rgba(255,255,255,.92)",
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {selected?.text || ""}
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="divider" />
-                      <div style={{ fontWeight: 900, marginBottom: 8 }}>Tóm tắt</div>
+                      <div className="field">
+                        <label>Tiêu đề (tuỳ chọn - để lưu vào thư viện)</label>
+                        <input
+                          className="input"
+                          value={customTitle}
+                          onChange={(e) => setCustomTitle(e.target.value)}
+                          disabled={busy || recording}
+                          placeholder="My passage"
+                        />
+                      </div>
 
-                      {task === "open-ended" ? (
-                        <>
-                          <div className="muted">
-                            Transcript:{" "}
-                            <b>{result?.speechace?.speech_score?.transcript ?? "n/a"}</b>
-                          </div>
+                      <div className="field" style={{ marginTop: 10 }}>
+                        <label>Reference text (bắt buộc)</label>
+                        <textarea
+                          className="textarea"
+                          value={customText}
+                          onChange={(e) => setCustomText(e.target.value)}
+                          disabled={busy || recording}
+                          placeholder="Dán đoạn bạn muốn user đọc..."
+                        />
+                      </div>
 
-                      {ielts ? (
-                        <div className="muted" style={{ marginTop: 8 }}>
-                          IELTS (ước lượng): Fluency {ielts?.fluency ?? "n/a"} • Vocab{" "}
-                          {ielts?.vocab ?? "n/a"} • Grammar {ielts?.grammar ?? "n/a"} •
-                          Pronunciation {ielts?.pronunciation ?? "n/a"}
-                        </div>
-                      ) : (
-                        <div className="muted" style={{ marginTop: 8 }}>
-                          (Không có IELTS trong response)
-                        </div>
-                      )}
-                    </>
-                  ) : task === "relevance" ? (
-                    <div className="muted">
-                      Relevance class: <b>{relevanceClass ?? "n/a"}</b>{" "}
-                      {relevanceScore != null ? `• score: ${relevanceScore}` : ""}
-                    </div>
-                  ) : (
-                    <div className="muted">Chưa có dữ liệu tóm tắt theo task này.</div>
-                  )}
-
-                      <details style={{ marginTop: 12 }}>
-                        <summary style={{ cursor: "pointer" }}>Xem JSON trả về (debug)</summary>
-                        <pre
-                          style={{
-                            marginTop: 10,
-                            padding: 12,
-                            borderRadius: 14,
-                            border: "1px solid var(--border)",
-                            background: "rgba(255,255,255,.9)",
-                            overflowX: "auto",
-                            fontSize: 12,
-                            lineHeight: 1.45,
-                          }}
-                        >
-                          {JSON.stringify(result, null, 2)}
-                        </pre>
-                      </details>
+                      <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                        <button className="btn3d" onClick={addCustomPassageToLibrary} disabled={busy || recording}>
+                          Lưu vào thư viện
+                        </button>
+                        <span className="badge accentBadge">Words: {wordsCount(customText)}</span>
+                      </div>
                     </>
                   )}
-
-                  {task === "reading" ? (
-                    <details style={{ marginTop: 12 }}>
-                      <summary style={{ cursor: "pointer" }}>Xem JSON SpeechAce (debug)</summary>
-                      <pre
-                        style={{
-                          marginTop: 10,
-                          padding: 12,
-                          borderRadius: 14,
-                          border: "1px solid var(--border)",
-                          background: "rgba(255,255,255,.9)",
-                          overflowX: "auto",
-                          fontSize: 12,
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        {JSON.stringify(result?.speechace, null, 2)}
-                      </pre>
-                    </details>
-                  ) : null}
-                </>
+                </div>
+              ) : task === "open-ended" ? (
+                <div className="section">
+                  <div className="sectionTitle">
+                    <span>Open-ended prompt</span>
+                    <span className="badge accentBadge">IELTS: {ieltsObj ? "ON" : "n/a"}</span>
+                  </div>
+                  <div className="field">
+                    <label>Prompt</label>
+                    <textarea
+                      className="textarea"
+                      value={openPrompt}
+                      onChange={(e) => setOpenPrompt(e.target.value)}
+                      disabled={busy || recording}
+                    />
+                  </div>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Tip: nói tự nhiên 1–2 phút (API tối đa), nên có mở bài – thân bài – kết.
+                  </div>
+                </div>
+              ) : (
+                <div className="section">
+                  <div className="sectionTitle">
+                    <span>Relevance context</span>
+                    <span className="badge accentBadge">Class: {relevanceClass ?? "n/a"}</span>
+                  </div>
+                  <div className="field">
+                    <label>Context</label>
+                    <textarea
+                      className="textarea"
+                      value={relevanceContext}
+                      onChange={(e) => setRelevanceContext(e.target.value)}
+                      disabled={busy || recording}
+                    />
+                  </div>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Tip: nói đúng trọng tâm đề bài để relevance lên TRUE.
+                  </div>
+                </div>
               )}
-            </div>
 
-            <p className="muted" style={{ textAlign: "center", marginTop: 10 }}>
-              *Audio user phát lại qua presigned URL (R2). Sample là Browser TTS.
-            </p>
-          </div>
+              {/* RECORD / UPLOAD */}
+              <div className="section">
+                <div className="sectionTitle">
+                  <span>Ghi âm / Upload audio</span>
+                  <span className="badge accentBadge">Recorder: {recorderName}</span>
+                </div>
+
+                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                  <button className="btn3d btnPrimary" onClick={() => void startRec()} disabled={busy || recording}>
+                    🎙️ Bắt đầu ghi
+                  </button>
+                  <button className="btn3d btnDanger" onClick={() => void stopRec()} disabled={busy || !recording}>
+                    ⏹ Dừng ({seconds}s)
+                  </button>
+                  <span className="badge accentBadge">Time: {seconds}s</span>
+                </div>
+
+                {busy ? (
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Đang upload &amp; chấm điểm... (đợi chút)
+                  </div>
+                ) : null}
+
+                <div className="divider" style={{ marginTop: 12 }} />
+
+                <div className="field">
+                  <label>Upload audio file (mp3/wav/webm/…)</label>
+                  <input
+                    ref={fileInputRef}
+                    key={`file-${task}`} // đổi tab là remount input => không kẹt UI tên file
+                    className="input fileInput"
+                    type="file"
+                    accept="audio/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      resetRunState(task);
+                      updateTaskState({ uploadedFile: f }, task);
+                    }}
+                    disabled={busy || recording}
+                  />
+
+                  {uploadedFile ? (
+                    <div className="muted" style={{ marginTop: 8 }}>
+                      Selected: <b>{uploadedFile.name}</b>
+                    </div>
+                  ) : null}
+
+                  <button
+                    className="btn3d btnPrimary"
+                    onClick={() => void scoreUploadedFile()}
+                    disabled={busy || recording || !uploadedFile}
+                    style={{ width: "100%", marginTop: 10 }}
+                  >
+                    Chấm file upload
+                  </button>
+                </div>
+
+                <div className="muted" style={{ marginTop: 12 }}>
+                  Kết quả sẽ hiển thị ở panel bên phải.
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* RIGHT: RESULTS */}
+          <main className="proMain">{resultsPanel}</main>
         </div>
       </div>
+
+      <style jsx global>{`
+        :root {
+          --border: rgba(15, 23, 42, 0.12);
+          --shadow: 0 18px 60px rgba(2, 6, 23, 0.2);
+          --text: #0f172a;
+          --muted: #475569;
+        }
+
+        body {
+          background:
+            radial-gradient(1000px 700px at 10% 10%, rgba(99, 102, 241, 0.35), transparent 60%),
+            radial-gradient(900px 650px at 90% 0%, rgba(34, 197, 94, 0.28), transparent 55%),
+            linear-gradient(180deg, #0b1020, #0b1020);
+        }
+
+        .container {
+          padding: 18px;
+          max-width: 1220px;
+          margin: 0 auto;
+        }
+
+        .card {
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 24px;
+          box-shadow: var(--shadow);
+          padding: 18px;
+          backdrop-filter: blur(10px);
+        }
+
+        .h1 {
+          color: #fff;
+          font-size: 22px;
+          font-weight: 900;
+          letter-spacing: 0.2px;
+        }
+
+        .sub {
+          color: rgba(255, 255, 255, 0.75);
+          margin-top: 6px;
+        }
+
+        /* Layout: menu trái - kết quả phải */
+        .proGrid {
+          display: grid;
+          grid-template-columns: 420px 1fr;
+          gap: 16px;
+          margin-top: 16px;
+        }
+
+        .proSide {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid var(--border);
+          border-radius: 22px;
+          padding: 14px;
+          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.1);
+        }
+
+        .proMain {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid var(--border);
+          border-radius: 22px;
+          padding: 16px;
+          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.1);
+          min-height: 520px;
+        }
+
+        .sideTabs {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .sideTabs .btn3d {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .sideScroll {
+          margin-top: 14px;
+          max-height: calc(100vh - 220px);
+          overflow: auto;
+          padding-right: 6px;
+        }
+
+        .sideScroll::-webkit-scrollbar {
+          width: 10px;
+        }
+
+        .sideScroll::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.18);
+          border-radius: 999px;
+          border: 3px solid rgba(255, 255, 255, 0.75);
+        }
+
+        /* Sections */
+        .section {
+          background: rgba(255, 255, 255, 0.98);
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          border-radius: 18px;
+          padding: 14px;
+          box-shadow: 0 10px 25px rgba(2, 6, 23, 0.06);
+        }
+
+        .section + .section {
+          margin-top: 14px;
+        }
+
+        .sectionTitle {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-weight: 900;
+          color: var(--text);
+          margin-bottom: 10px;
+        }
+
+        .divider {
+          height: 1px;
+          background: rgba(15, 23, 42, 0.1);
+          border: 0;
+        }
+
+        .muted {
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(99, 102, 241, 0.12);
+          border: 1px solid rgba(99, 102, 241, 0.22);
+          color: #1e1b4b;
+          font-weight: 800;
+          font-size: 12px;
+        }
+
+        .grid2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .row {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+
+        /* Inputs */
+        .input,
+        .select,
+        .textarea {
+          width: 100%;
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          background: rgba(255, 255, 255, 0.98);
+          padding: 10px 12px;
+          outline: none;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        }
+
+        .textarea {
+          min-height: 120px;
+          resize: vertical;
+        }
+
+        /* 3D Buttons */
+        .btn3d {
+          border: 0;
+          cursor: pointer;
+          border-radius: 14px;
+          padding: 11px 14px;
+          font-weight: 900;
+          color: #0b1020;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.8));
+          box-shadow: 0 10px 0 rgba(15, 23, 42, 0.08), 0 16px 28px rgba(2, 6, 23, 0.12);
+          transform: translateY(0);
+          transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+          user-select: none;
+        }
+
+        .btn3d:hover {
+          filter: brightness(1.02);
+          transform: translateY(-1px);
+        }
+
+        .btn3d:active {
+          transform: translateY(3px);
+          box-shadow: 0 7px 0 rgba(15, 23, 42, 0.1), 0 10px 18px rgba(2, 6, 23, 0.14);
+        }
+
+        .btn3d:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .btnPrimary {
+          color: #fff;
+          background: linear-gradient(180deg, #6366f1, #4338ca);
+          box-shadow: 0 10px 0 rgba(67, 56, 202, 0.35), 0 16px 28px rgba(2, 6, 23, 0.22);
+        }
+
+        .btnDanger {
+          color: #fff;
+          background: linear-gradient(180deg, #fb7185, #ef4444);
+          box-shadow: 0 10px 0 rgba(239, 68, 68, 0.28), 0 16px 28px rgba(2, 6, 23, 0.22);
+        }
+
+        .btnActive {
+          outline: 3px solid rgba(255, 255, 255, 0.35);
+        }
+
+        /* Theme per task */
+        .themeReading {
+          --accentA: #06b6d4;
+          --accentB: #3b82f6;
+          --accentText: #083344;
+          --accentSoft: rgba(6, 182, 212, 0.12);
+          --accentBorder: rgba(6, 182, 212, 0.26);
+        }
+
+        .themeOpen {
+          --accentA: #8b5cf6;
+          --accentB: #6366f1;
+          --accentText: #2e1065;
+          --accentSoft: rgba(139, 92, 246, 0.12);
+          --accentBorder: rgba(139, 92, 246, 0.26);
+        }
+
+        .themeRel {
+          --accentA: #f97316;
+          --accentB: #ef4444;
+          --accentText: #7c2d12;
+          --accentSoft: rgba(249, 115, 22, 0.12);
+          --accentBorder: rgba(249, 115, 22, 0.26);
+        }
+
+        .accentBadge {
+          background: var(--accentSoft);
+          border: 1px solid var(--accentBorder);
+          color: var(--accentText);
+        }
+
+        .btnTask {
+          color: #fff;
+          justify-content: flex-start;
+        }
+
+        .btnTaskReading {
+          background: linear-gradient(180deg, #06b6d4, #3b82f6);
+          box-shadow: 0 10px 0 rgba(59, 130, 246, 0.25), 0 16px 28px rgba(2, 6, 23, 0.22);
+        }
+
+        .btnTaskOpen {
+          background: linear-gradient(180deg, #8b5cf6, #6366f1);
+          box-shadow: 0 10px 0 rgba(99, 102, 241, 0.25), 0 16px 28px rgba(2, 6, 23, 0.22);
+        }
+
+        .btnTaskRel {
+          background: linear-gradient(180deg, #f97316, #ef4444);
+          box-shadow: 0 10px 0 rgba(239, 68, 68, 0.22), 0 16px 28px rgba(2, 6, 23, 0.22);
+        }
+
+        /* Results header + dashboard */
+        .resultsHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 12px;
+          padding: 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          background:
+            radial-gradient(700px 240px at 20% 0%, var(--accentSoft), transparent 60%),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9));
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+        }
+
+        .resultsTitle {
+          font-weight: 1000;
+          font-size: 18px;
+          color: var(--text);
+        }
+
+        .resultsSub {
+          color: var(--muted);
+          font-size: 13px;
+          margin-top: 4px;
+          font-weight: 700;
+        }
+
+        .dashGrid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 12px;
+        }
+
+        .metricCardPro {
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          border-radius: 18px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+        }
+
+        .metricTop {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 10px;
+        }
+
+        .metricLabel {
+          color: var(--muted);
+          font-weight: 800;
+          font-size: 12px;
+        }
+
+        .metricValue {
+          font-weight: 1000;
+          font-size: 22px;
+        }
+
+        .metricSub {
+          margin-top: 8px;
+          color: var(--muted);
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .bar {
+          height: 10px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.08);
+          overflow: hidden;
+          margin-top: 10px;
+        }
+
+        .barFill {
+          height: 100%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, var(--accentA), var(--accentB));
+          width: 0%;
+          transition: width 240ms ease;
+        }
+
+        .quickRow {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+          margin-top: 12px;
+        }
+
+        .quickCard {
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          border-radius: 18px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+        }
+
+        .quickTitle {
+          font-weight: 1000;
+          margin-bottom: 6px;
+        }
+
+        .quickText {
+          color: var(--muted);
+          font-size: 13px;
+          line-height: 1.55;
+          font-weight: 700;
+        }
+
+        .issueWrap {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .issuePill {
+          padding: 7px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 900;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          background: rgba(255, 255, 255, 0.9);
+        }
+
+        .issueWarn {
+          background: rgba(245, 158, 11, 0.12);
+          border-color: rgba(245, 158, 11, 0.22);
+          color: #7c2d12;
+        }
+
+        .issueErr {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.22);
+          color: #7f1d1d;
+        }
+
+        .issueInfo {
+          background: rgba(99, 102, 241, 0.12);
+          border-color: rgba(99, 102, 241, 0.22);
+          color: #1e1b4b;
+        }
+
+        .relBox {
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          border-radius: 18px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+          margin-top: 12px;
+        }
+
+        .relRow {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .relPill {
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-weight: 1000;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+        }
+
+        .relTrue {
+          background: rgba(34, 197, 94, 0.12);
+          border-color: rgba(34, 197, 94, 0.22);
+          color: #064e3b;
+        }
+
+        .relFalse {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.22);
+          color: #7f1d1d;
+        }
+
+        .alertError {
+          margin-top: 12px;
+          padding: 12px;
+          border-radius: 16px;
+          border: 1px solid rgba(239, 68, 68, 0.28);
+          background: rgba(239, 68, 68, 0.08);
+          color: #7f1d1d;
+          font-weight: 800;
+        }
+
+        /* Responsive */
+        @media (max-width: 980px) {
+          .proGrid {
+            grid-template-columns: 1fr;
+          }
+
+          .sideScroll {
+            max-height: none;
+          }
+
+          .dashGrid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .grid2 {
+            grid-template-columns: 1fr !important;
+          }
+
+          .row {
+            flex-wrap: wrap !important;
+          }
+
+          .btn3d {
+            min-height: 44px;
+            font-size: 16px;
+          }
+
+          .input,
+          .select,
+          .textarea,
+          input[type="file"].fileInput {
+            font-size: 16px !important;
+          }
+
+          input[type="file"].fileInput {
+            height: auto !important;
+            padding: 10px 12px !important;
+          }
+        }
+      `}</style>
 
       {renderPopups}
     </div>
