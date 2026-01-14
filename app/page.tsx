@@ -242,6 +242,15 @@ export default function Page() {
 
   const [hover, setHover] = useState<{ w: WordDisplay; x: number; y: number } | null>(null);
   const [clickPop, setClickPop] = useState<{ w: WordDisplay; x: number; y: number } | null>(null);
+  // ===== Translation (EN -> VI) for hover tooltip =====
+  const [meaningMap, setMeaningMap] = useState<Record<string, string>>({});
+  const [translatingKey, setTranslatingKey] = useState<string | null>(null);
+  const translateAbortRef = useRef<AbortController | null>(null);
+
+  function getMeaning(rawWord: string | undefined | null) {
+    const k = normalizeWord(rawWord || "");
+    return k ? meaningMap[k] || "" : "";
+  }
 
   // MediaRecorder path
   const mrRef = useRef<MediaRecorder | null>(null);
@@ -278,6 +287,50 @@ export default function Page() {
     updateTaskState({ uploadedFile: null }, task);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
+  useEffect(() => {
+    if (task !== "reading") return;
+
+    // Ưu tiên từ đang click popup, nếu không có thì lấy từ đang hover
+    const rawWord = clickPop?.w?.word || hover?.w?.word || "";
+  const key = normalizeWord(rawWord);
+
+    // chỉ dịch từ "đàng hoàng" (tránh số/ký tự lạ)
+    if (!key || key.length < 2 || !/^[a-z]+$/i.test(key)) return;
+    // đã có cache thì thôi
+    if (meaningMap[key]) return;
+
+    const timer = setTimeout(async () => {
+      // hủy request trước đó nếu đang bay
+      translateAbortRef.current?.abort?.();
+      const ac = new AbortController();
+      translateAbortRef.current = ac;
+
+      setTranslatingKey(key);
+
+      try {
+        const r = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: key, from: "en", to: "vi" }),
+          signal: ac.signal,
+        });
+
+        const j = await r.json().catch(() => null);
+        if (!r.ok) return;
+
+        const vi = String(j?.translation || "").trim();
+        if (vi) {
+          setMeaningMap((prev) => ({ ...prev, [key]: vi }));
+        }
+      } catch {
+        // ignore
+      } finally {
+        setTranslatingKey((cur) => (cur === key ? null : cur));
+      }
+    }, 180); // debounce nhẹ cho mượt
+
+    return () => clearTimeout(timer);
+  }, [task, hover?.w?.word, clickPop?.w?.word, meaningMap]);
 
   useEffect(() => {
     const raw = localStorage.getItem(USER_PASSAGES_STORAGE_KEY);
@@ -840,6 +893,13 @@ export default function Page() {
                 <div className="muted" style={{ marginTop: 6 }}>
                   {formatPhonesForTooltip(clickPop.w) || "(no phone detail)"}
                 </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Dịch:{" "}
+                  <b>
+                    {getMeaning(clickPop.w.word) ||
+                      (translatingKey === normalizeWord(clickPop.w.word) ? "đang tra…" : "—")}
+                  </b>
+                </div>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                   <button className="btn3d" onClick={() => void playWord(clickPop.w)} disabled={!audioUrl}>
@@ -889,6 +949,13 @@ export default function Page() {
                 <div className="muted" style={{ marginTop: 6 }}>
                   {formatPhonesForTooltip(hover.w) || "(no phone detail)"}
                 </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Dịch:{" "}
+                  <b>
+                    {getMeaning(hover.w.word) ||
+                      (translatingKey === normalizeWord(hover.w.word) ? "đang tra…" : "—")}
+                    </b>
+                  </div>
 
                 <div className="muted" style={{ marginTop: 8 }}>
                   click vào từ để nghe lại đúng từ
