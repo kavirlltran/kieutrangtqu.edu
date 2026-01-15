@@ -1,3 +1,4 @@
+// app/page.tsx
 "use client";
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +25,112 @@ type TaskUiState = {
   audioUrlAt: number | null;
   uploadedFile: File | null;
 };
+
+type HistoryEntry = {
+  id: string;
+  ts: number; // Date.now()
+  task: Task;
+  dialect: Dialect;
+
+  overall: number | null;
+  pronunciation: number | null;
+  fluency: number | null;
+  grammar: number | null;
+  coherence: number | null;
+  vocab: number | null;
+
+  relevanceClass?: string | null;
+  relevanceScore?: number | null;
+  relevanceExtra?: Record<string, any> | null;
+
+  transcript?: string | null;
+
+  prompt?: string | null;
+  relevanceContext?: string | null;
+  referenceWords?: number | null;
+};
+
+const HISTORY_STORAGE_KEY = "speechace_history_v1";
+const HISTORY_MAX = 200;
+
+function safeNum(v: any): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function loadHistory(): HistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(items: HistoryEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items.slice(0, HISTORY_MAX)));
+  } catch {}
+}
+
+function pushHistory(entry: HistoryEntry) {
+  const cur = loadHistory();
+  saveHistory([entry, ...cur].slice(0, HISTORY_MAX));
+}
+
+function dayKey(ts: number) {
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function isoWeekKey(ts: number) {
+  const d = new Date(ts);
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function avg(nums: (number | null | undefined)[]) {
+  const xs = nums.filter((x) => typeof x === "number" && Number.isFinite(x)) as number[];
+  if (!xs.length) return null;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function groupHistory(
+  items: HistoryEntry[],
+  bucket: "day" | "week",
+  taskFilter: Task | "all",
+  metric: keyof Pick<
+    HistoryEntry,
+    "overall" | "pronunciation" | "fluency" | "grammar" | "coherence" | "vocab" | "relevanceScore"
+  >
+) {
+  const keyer = bucket === "day" ? dayKey : isoWeekKey;
+  const filtered = taskFilter === "all" ? items : items.filter((x) => x.task === taskFilter);
+
+  const map = new Map<string, HistoryEntry[]>();
+  for (const it of filtered) {
+    const k = keyer(it.ts);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k)!.push(it);
+  }
+
+  const labels = Array.from(map.keys()).sort();
+  return labels.map((k) => {
+    const group = map.get(k)!;
+    const v = avg(group.map((g) => (g as any)[metric]));
+    return { label: k, value: v };
+  });
+}
 
 function wordsCount(s: string) {
   return s.trim().split(/\s+/).filter(Boolean).length;
@@ -58,7 +165,9 @@ function qualityBand(q: number | null | undefined): "none" | "good" | "warn" | "
 }
 
 function formatPhonesForTooltip(w: WordDisplay) {
+  // @ts-ignore
   if (!w?.phones?.length) return "";
+  // @ts-ignore
   const parts = w.phones.slice(0, 10).map((p) => {
     const q = typeof p.quality === "number" ? Math.round(p.quality) : null;
     const sm = p.soundMostLike ? `→${p.soundMostLike}` : "";
@@ -68,7 +177,7 @@ function formatPhonesForTooltip(w: WordDisplay) {
 }
 
 /**
- * SpeechAce có extent theo đơn vị 10ms (theo docs).
+ * SpeechAce extent theo đơn vị 10ms (theo docs).
  * startSec = extent[0] * 0.01
  * endSec   = extent[1] * 0.01
  */
@@ -85,19 +194,17 @@ function timingFromPhoneExtents(phoneScoreList: any[]): WordTiming | null {
 
   const start10ms = typeof s[0] === "number" ? s[0] : null;
   const end10ms = typeof e[1] === "number" ? e[1] : null;
-
   if (start10ms == null || end10ms == null) return null;
 
   const startSec = Math.max(0, start10ms * 0.01);
   const endSec = Math.max(startSec + 0.02, end10ms * 0.01);
-
   return { startSec, endSec };
 }
 
 /**
  * Build wordDisplays theo thứ tự words trong usedText.
  * Map tuần tự + lookahead để bớt lệch.
- * Timing lấy ưu tiên từ phone_score_list[].extent (10ms), nếu không có thì fallback timingFromItem().
+ * Timing ưu tiên từ phone_score_list[].extent (10ms), fallback timingFromItem().
  */
 function buildWordDisplays(usedText: string, speechace: any): WordDisplay[] {
   const list = getWordScoreList(speechace) || [];
@@ -116,7 +223,8 @@ function buildWordDisplays(usedText: string, speechace: any): WordDisplay[] {
     let pickedIndex = -1;
 
     for (let k = j; k < Math.min(list.length, j + 4); k++) {
-      const candidateWord = normalizeWord(list[k]?.word || list[k]?.text || "");
+      // FIX: WordScoreListItem không có text => chỉ dùng .word
+      const candidateWord = normalizeWord(list[k]?.word || "");
       if (candidateWord && candidateWord === norm) {
         picked = list[k];
         pickedIndex = k;
@@ -177,18 +285,83 @@ function tokenizeAndAttach(text: string, wordDisplays: WordDisplay[]): Token[] {
   let m: RegExpExecArray | null;
 
   while ((m = re.exec(text)) !== null) {
-    if (m[1]) {
-      tokens.push({ kind: "space", text: m[1] });
-    } else if (m[2]) {
+    if (m[1]) tokens.push({ kind: "space", text: m[1] });
+    else if (m[2]) {
       const attach = wordDisplays?.[wi] || null;
       tokens.push({ kind: "word", text: m[2], attach });
       wi++;
-    } else if (m[3]) {
-      tokens.push({ kind: "punct", text: m[3] });
-    }
+    } else if (m[3]) tokens.push({ kind: "punct", text: m[3] });
+  }
+  return tokens;
+}
+
+function Sparkline({
+  data,
+  height = 64,
+}: {
+  data: { label: string; value: number | null }[];
+  height?: number;
+}) {
+  const w = 420;
+  const h = height;
+
+  const vals = data.map((d) => d.value).filter((v): v is number => typeof v === "number");
+  if (!data.length || !vals.length) {
+    return (
+      <div className="muted" style={{ padding: 10 }}>
+        Chưa đủ dữ liệu để vẽ biểu đồ.
+      </div>
+    );
   }
 
-  return tokens;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const pad = 4;
+  const xStep = data.length <= 1 ? 0 : (w - pad * 2) / (data.length - 1);
+
+  const yOf = (v: number) => {
+    if (max === min) return h / 2;
+    const t = (v - min) / (max - min);
+    return pad + (1 - t) * (h - pad * 2);
+  };
+
+  const pts = data
+    .map((d, i) => {
+      if (d.value == null) return null;
+      const x = pad + i * xStep;
+      const y = yOf(d.value);
+      return `${x},${y}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+
+  const last = [...data].reverse().find((d) => d.value != null);
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height }} aria-label="progress chart">
+        <polyline
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="3"
+          points={pts}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <line x1="0" y1={h - 1} x2={w} y2={h - 1} stroke="rgba(15,23,42,.10)" />
+      </svg>
+
+      <div className="row" style={{ justifyContent: "space-between", marginTop: 8 }}>
+        <div
+          className="muted"
+          style={{ maxWidth: "75%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
+          {data[0]?.label} → {data[data.length - 1]?.label}
+        </div>
+        <div className="badge accentBadge">Latest: {last?.value != null ? last.value.toFixed(1) : "n/a"}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function Page() {
@@ -216,7 +389,7 @@ export default function Page() {
   );
   const [relevanceContext, setRelevanceContext] = useState("Describe your favorite food and explain why you like it.");
 
-  // ==== Per-task state (GIỮ KẾT QUẢ KHI ĐỔI TAB) ====
+  // per-task state
   const [taskState, setTaskState] = useState<Record<Task, TaskUiState>>({
     reading: { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
     "open-ended": { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
@@ -232,6 +405,19 @@ export default function Page() {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // ===== Dashboard (history + chart) =====
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [dashBucket, setDashBucket] = useState<"day" | "week">("day");
+  const [dashTask, setDashTask] = useState<Task | "all">("all");
+  const [dashMetric, setDashMetric] = useState<
+    "overall" | "pronunciation" | "fluency" | "grammar" | "coherence" | "vocab" | "relevanceScore"
+  >("overall");
+
+  const history = useMemo(() => {
+    void historyVersion;
+    return loadHistory();
+  }, [historyVersion]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -242,6 +428,7 @@ export default function Page() {
 
   const [hover, setHover] = useState<{ w: WordDisplay; x: number; y: number } | null>(null);
   const [clickPop, setClickPop] = useState<{ w: WordDisplay; x: number; y: number } | null>(null);
+
   // ===== Translation (EN -> VI) for hover tooltip =====
   const [meaningMap, setMeaningMap] = useState<Record<string, string>>({});
   const [translatingKey, setTranslatingKey] = useState<string | null>(null);
@@ -274,33 +461,28 @@ export default function Page() {
     }));
   }
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => setMounted(true), []);
 
+  // Đổi tab: reset DOM file input + reset state uploadedFile của tab đang vào
   useEffect(() => {
-    // Đổi tab: reset file picker DOM + reset state uploadedFile của tab đang vào
     try {
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch {}
-
     updateTaskState({ uploadedFile: null }, task);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
+
+  // Auto-translate hovered/clicked word (reading)
   useEffect(() => {
     if (task !== "reading") return;
 
-    // Ưu tiên từ đang click popup, nếu không có thì lấy từ đang hover
     const rawWord = clickPop?.w?.word || hover?.w?.word || "";
-  const key = normalizeWord(rawWord);
+    const key = normalizeWord(rawWord);
 
-    // chỉ dịch từ "đàng hoàng" (tránh số/ký tự lạ)
     if (!key || key.length < 2 || !/^[a-z]+$/i.test(key)) return;
-    // đã có cache thì thôi
     if (meaningMap[key]) return;
 
     const timer = setTimeout(async () => {
-      // hủy request trước đó nếu đang bay
       translateAbortRef.current?.abort?.();
       const ac = new AbortController();
       translateAbortRef.current = ac;
@@ -319,15 +501,13 @@ export default function Page() {
         if (!r.ok) return;
 
         const vi = String(j?.translation || "").trim();
-        if (vi) {
-          setMeaningMap((prev) => ({ ...prev, [key]: vi }));
-        }
+        if (vi) setMeaningMap((prev) => ({ ...prev, [key]: vi }));
       } catch {
         // ignore
       } finally {
         setTranslatingKey((cur) => (cur === key ? null : cur));
       }
-    }, 180); // debounce nhẹ cho mượt
+    }, 180);
 
     return () => clearTimeout(timer);
   }, [task, hover?.w?.word, clickPop?.w?.word, meaningMap]);
@@ -341,7 +521,6 @@ export default function Page() {
     } catch {}
   }, []);
 
-  // Cleanup timer + tts on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -413,7 +592,6 @@ export default function Page() {
     if (!key) return null;
 
     const now = Date.now();
-    // nếu url còn mới (tạm giả định 50s), khỏi xin lại
     if (audioUrl && active.audioUrlAt && now - active.audioUrlAt < 50_000) return audioUrl;
 
     try {
@@ -423,7 +601,6 @@ export default function Page() {
 
       updateTaskState({ audioUrl: url, audioUrlAt: url ? Date.now() : null });
 
-      // set trực tiếp cho audio element để play ngay lập tức
       if (url && audioRef.current) {
         try {
           audioRef.current.src = url;
@@ -444,7 +621,6 @@ export default function Page() {
     stopSegmentTimer();
     segmentRef.current = null;
 
-    // token chống race
     playTokenRef.current += 1;
     const token = playTokenRef.current;
 
@@ -452,7 +628,6 @@ export default function Page() {
       a.pause();
     } catch {}
 
-    // đảm bảo có src
     if (!a.src) {
       const url = await ensureFreshAudioUrl();
       if (!url) return;
@@ -467,7 +642,6 @@ export default function Page() {
 
       segmentRef.current = { endSec, token };
 
-      // LUÔN catch play()
       void a.play().catch(() => {});
 
       const ms = Math.max(80, Math.round((endSec - startSec) * 1000) + 60);
@@ -483,7 +657,6 @@ export default function Page() {
       }, ms);
     };
 
-    // nếu chưa có metadata thì đợi
     if (a.readyState < 1) {
       await new Promise<void>((resolve) => {
         const once = () => {
@@ -514,7 +687,6 @@ export default function Page() {
       return;
     }
 
-    // stop audio
     try {
       audioRef.current?.pause?.();
     } catch {}
@@ -533,7 +705,6 @@ export default function Page() {
   }
 
   async function playWord(w: WordDisplay) {
-    // luôn xin lại url nếu có nguy cơ hết hạn
     const url = await ensureFreshAudioUrl();
     if (!url) return;
 
@@ -542,32 +713,24 @@ export default function Page() {
 
     const t: any = (w as any).timing;
     if (!t || typeof t.startSec !== "number" || typeof t.endSec !== "number") {
-      // KHÔNG fallback phát từ đầu nữa
       updateTaskState({ err: "Từ này không có timing → không thể phát đúng theo từ (hãy đảm bảo SpeechAce trả extent)." });
       return;
     }
 
     const start = Math.max(0, t.startSec - 0.05);
     const end = Math.max(start + 0.02, t.endSec);
-
     await playSegment(start, end);
   }
 
   async function startRec() {
     resetRunState(task);
-
-    // ✅ ghi nhớ task lúc bắt đầu ghi để lưu result đúng tab
     taskAtRecordRef.current = task;
 
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
-
-    if (task === "reading" && wordsCount(refText) < 1) {
-      return updateTaskState({ err: "Bạn phải nạp Reference text trước khi ghi âm." });
-    }
+    if (task === "reading" && wordsCount(refText) < 1) return updateTaskState({ err: "Bạn phải nạp Reference text trước khi ghi âm." });
 
     if (uploadedFile) updateTaskState({ uploadedFile: null });
 
-    // reset timer
     secondsRef.current = 0;
     setSeconds(0);
     if (timerRef.current) clearInterval(timerRef.current);
@@ -579,9 +742,7 @@ export default function Page() {
     try {
       const gum = (navigator as any)?.mediaDevices?.getUserMedia;
       if (!gum) {
-        throw new Error(
-          "Trình duyệt không hỗ trợ getUserMedia (hoặc đang chạy HTTP). Hãy dùng HTTPS hoặc Upload audio."
-        );
+        throw new Error("Trình duyệt không hỗ trợ getUserMedia (hoặc đang chạy HTTP). Hãy dùng HTTPS hoặc Upload audio.");
       }
 
       if (hasMediaRecorder()) {
@@ -599,11 +760,9 @@ export default function Page() {
 
             const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
 
-            // ✅ Nếu blob rỗng: báo lỗi rõ
             if (!blob || blob.size < 1000) {
               updateTaskState({
-                err:
-                  "Không thu được audio (blob rỗng). Hãy thử Chrome khác / cấp quyền micro lại / hoặc dùng Upload file.",
+                err: "Không thu được audio (blob rỗng). Hãy thử Chrome khác / cấp quyền micro lại / hoặc dùng Upload file.",
               });
               return;
             }
@@ -615,15 +774,12 @@ export default function Page() {
         };
 
         mrRef.current = mr;
-
-        // QUAN TRỌNG: start theo timeslice để chắc chắn có ondataavailable
         mr.start(250);
 
         setRecording(true);
         return;
       }
 
-      // WAV fallback
       const h = await startWavRecorder();
       wavStopperRef.current = h.stop;
       setRecording(true);
@@ -635,9 +791,7 @@ export default function Page() {
       if (name === "NotAllowedError") {
         updateTaskState({ err: "Bạn đã chặn quyền micro. Bấm icon khóa cạnh URL → Allow microphone." });
       } else if (name === "NotFoundError") {
-        updateTaskState({
-          err: "Không tìm thấy micro trên máy. Cắm micro/chọn đúng Input trong Windows, hoặc dùng Upload audio.",
-        });
+        updateTaskState({ err: "Không tìm thấy micro trên máy. Cắm micro/chọn đúng Input trong Windows, hoặc dùng Upload audio." });
       } else if (name === "NotReadableError") {
         updateTaskState({ err: "Micro đang bị app khác chiếm (Zoom/Meet/...). Tắt app đó rồi thử lại." });
       } else {
@@ -650,19 +804,16 @@ export default function Page() {
     if (!recording) return;
     setRecording(false);
 
-    // MediaRecorder path
     if (mrRef.current) {
       mrRef.current.stop();
       mrRef.current = null;
       return;
     }
 
-    // WAV fallback path
     const stop = wavStopperRef.current;
     wavStopperRef.current = null;
 
     if (timerRef.current) clearInterval(timerRef.current);
-
     if (!stop) return updateTaskState({ err: "Recorder not ready" });
 
     try {
@@ -726,7 +877,6 @@ export default function Page() {
         body: JSON.stringify(payload),
       });
 
-      // ✅ đọc raw text trước để không phụ thuộc res.json()
       const raw = await res.text();
       console.log("[score] status =", res.status, "raw(head) =", raw?.slice(0, 200));
 
@@ -734,21 +884,79 @@ export default function Page() {
       try {
         json = raw ? JSON.parse(raw) : {};
       } catch {
-        json = { raw }; // nếu API trả text/html thì vẫn có debug
+        json = { raw };
       }
 
-      if (!res.ok) {
-        throw new Error(json?.error || json?.message || raw || "Scoring failed");
-      }
+      if (!res.ok) throw new Error(json?.error || json?.message || raw || "Scoring failed");
+
+      const nextResult = { ...(json ?? {}), usedText: t === "reading" ? refText : undefined };
 
       updateTaskState(
         {
-          result: { ...(json ?? {}), usedText: t === "reading" ? refText : undefined },
+          result: nextResult,
           audioUrl: null,
           audioUrlAt: null,
         },
         t
       );
+
+      // ===== Save history =====
+      try {
+        const sp = nextResult?.speechace;
+
+        const scoreObj =
+          t === "reading"
+            ? sp?.text_score?.speechace_score ?? sp?.speechace_score ?? null
+            : sp?.speech_score?.speechace_score ?? sp?.speechace_score ?? null;
+
+        const overallNum =
+          t === "reading"
+            ? safeNum(
+                sp?.text_score?.speechace_score?.overall ??
+                  sp?.text_score?.overall ??
+                  scoreObj?.overall ??
+                  nextResult?.overall
+              )
+            : safeNum(
+                sp?.speech_score?.speechace_score?.overall ??
+                  sp?.speech_score?.overall ??
+                  scoreObj?.overall ??
+                  nextResult?.overall
+              );
+
+        const relObj = sp?.speech_score?.relevance ?? sp?.relevance ?? null;
+        const relExtra =
+          relObj && typeof relObj === "object"
+            ? Object.fromEntries(Object.entries(relObj).filter(([k]) => !["class", "score"].includes(k)))
+            : null;
+
+        const entry: HistoryEntry = {
+          id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          ts: Date.now(),
+          task: t,
+          dialect,
+
+          overall: overallNum,
+          pronunciation: safeNum(scoreObj?.pronunciation),
+          fluency: safeNum(scoreObj?.fluency),
+          grammar: safeNum(scoreObj?.grammar),
+          coherence: safeNum(scoreObj?.coherence),
+          vocab: safeNum(scoreObj?.vocab),
+
+          relevanceClass: t === "relevance" ? (nextResult?.relevanceClass ?? relObj?.class ?? null) : null,
+          relevanceScore: t === "relevance" ? safeNum(nextResult?.relevanceScore ?? relObj?.score ?? null) : null,
+          relevanceExtra: t === "relevance" ? (relExtra as any) : null,
+
+          transcript: sp?.speech_score?.transcript ?? sp?.speech_score?.transcription ?? null,
+
+          prompt: t === "open-ended" ? openPrompt.trim() : null,
+          relevanceContext: t === "relevance" ? relevanceContext.trim() : null,
+          referenceWords: t === "reading" ? wordsCount(refText) : null,
+        };
+
+        pushHistory(entry);
+        setHistoryVersion((v) => v + 1);
+      } catch {}
     } catch (e: any) {
       updateTaskState({ err: e?.message || "Error" }, t);
     } finally {
@@ -760,29 +968,23 @@ export default function Page() {
     resetRunState(task);
     if (!uploadedFile) return;
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
-    if (task === "reading" && wordsCount(refText) < 1) {
-      return updateTaskState({ err: "Bạn phải nạp Reference text trước khi chấm." });
-    }
+    if (task === "reading" && wordsCount(refText) < 1) return updateTaskState({ err: "Bạn phải nạp Reference text trước khi chấm." });
     await uploadThenScore(uploadedFile, undefined, task);
   }
 
-  // Fetch audioUrl when current task result has audioKey (and keep per task)
+  // Fetch audioUrl when current task result has audioKey
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       const key = result?.audioKey;
       if (!key) return;
-
-      // nếu task này đã có url thì không cần fetch lại ngay
       if (active.audioUrl && active.audioUrlAt) return;
 
       try {
         const r = await fetch(`/api/audio-url?key=${encodeURIComponent(key)}`);
         const j = await r.json();
-        if (!cancelled) {
-          updateTaskState({ audioUrl: j?.url || null, audioUrlAt: j?.url ? Date.now() : null });
-        }
+        if (!cancelled) updateTaskState({ audioUrl: j?.url || null, audioUrlAt: j?.url ? Date.now() : null });
       } catch {
         if (!cancelled) updateTaskState({ audioUrl: null, audioUrlAt: null });
       }
@@ -795,7 +997,7 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task, result?.audioKey]);
 
-  // Timeupdate pause at segment end (with token)
+  // Pause at segment end
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -803,7 +1005,6 @@ export default function Page() {
     const onTime = () => {
       const seg = segmentRef.current;
       if (!seg) return;
-
       if (playTokenRef.current !== seg.token) return;
 
       if (a.currentTime >= seg.endSec) {
@@ -849,20 +1050,23 @@ export default function Page() {
   const hasHighlight =
     task === "reading" && tokens.some((t) => t.kind === "word" && t.attach && typeof t.attach.quality === "number");
 
+  // Relevance details (show everything SpeechAce returns)
+  const relevanceObj = (speechace?.speech_score?.relevance ?? speechace?.relevance ?? null) as any;
   const relevanceClass =
-    (result?.relevanceClass ?? speechace?.speech_score?.relevance?.class ?? speechace?.relevance?.class ?? null) as any;
-
+    (result?.relevanceClass ?? relevanceObj?.class ?? speechace?.speech_score?.relevance?.class ?? null) as any;
   const relevanceScore =
-    (result?.relevanceScore ?? speechace?.speech_score?.relevance?.score ?? speechace?.relevance?.score ?? null) as any;
+    (result?.relevanceScore ?? relevanceObj?.score ?? speechace?.speech_score?.relevance?.score ?? null) as any;
 
-  // ===== POPUP clamp =====
+  const relevanceExtra =
+    relevanceObj && typeof relevanceObj === "object"
+      ? Object.entries(relevanceObj).filter(([k]) => !["class", "score"].includes(k))
+      : [];
+
   const clampLeft = (x: number, w: number) =>
     Math.min(x, (typeof window !== "undefined" ? window.innerWidth : 1024) - w - 12);
-
   const clampTop = (y: number, h: number) =>
     Math.min(y, (typeof window !== "undefined" ? window.innerHeight : 768) - h - 12);
 
-  // ===== POPUP portal =====
   const renderPopups =
     mounted && typeof document !== "undefined"
       ? createPortal(
@@ -873,7 +1077,7 @@ export default function Page() {
                 style={{
                   position: "fixed",
                   left: clampLeft(clickPop.x + 12, 300),
-                  top: clampTop(clickPop.y + 12, 210),
+                  top: clampTop(clickPop.y + 12, 230),
                   width: 280,
                   borderRadius: 16,
                   border: "1px solid var(--border)",
@@ -893,6 +1097,7 @@ export default function Page() {
                 <div className="muted" style={{ marginTop: 6 }}>
                   {formatPhonesForTooltip(clickPop.w) || "(no phone detail)"}
                 </div>
+
                 <div className="muted" style={{ marginTop: 6 }}>
                   Dịch:{" "}
                   <b>
@@ -928,7 +1133,7 @@ export default function Page() {
                 style={{
                   position: "fixed",
                   left: clampLeft(hover.x + 12, 280),
-                  top: clampTop(hover.y + 12, 180),
+                  top: clampTop(hover.y + 12, 200),
                   width: 260,
                   borderRadius: 16,
                   border: "1px solid var(--border)",
@@ -949,13 +1154,13 @@ export default function Page() {
                 <div className="muted" style={{ marginTop: 6 }}>
                   {formatPhonesForTooltip(hover.w) || "(no phone detail)"}
                 </div>
+
                 <div className="muted" style={{ marginTop: 6 }}>
                   Dịch:{" "}
                   <b>
-                    {getMeaning(hover.w.word) ||
-                      (translatingKey === normalizeWord(hover.w.word) ? "đang tra…" : "—")}
-                    </b>
-                  </div>
+                    {getMeaning(hover.w.word) || (translatingKey === normalizeWord(hover.w.word) ? "đang tra…" : "—")}
+                  </b>
+                </div>
 
                 <div className="muted" style={{ marginTop: 8 }}>
                   click vào từ để nghe lại đúng từ
@@ -1002,7 +1207,10 @@ export default function Page() {
   const transcript =
     task === "reading"
       ? speechace?.text_score?.transcript ?? speechace?.transcript ?? ""
-      : speechace?.speech_score?.transcript ?? speechace?.speech_score?.transcription ?? speechace?.transcript ?? "";
+      : speechace?.speech_score?.transcript ??
+        speechace?.speech_score?.transcription ??
+        speechace?.transcript ??
+        "";
 
   const norm100 = (v: any) => {
     const n = typeof v === "number" ? v : Number(v);
@@ -1025,6 +1233,11 @@ export default function Page() {
       </div>
     );
   };
+
+  // ---- Progress dashboard computed data
+  const chartData = useMemo(() => {
+    return groupHistory(history, dashBucket, dashTask, dashMetric).slice(-24);
+  }, [history, dashBucket, dashTask, dashMetric]);
 
   const resultsPanel = (
     <div>
@@ -1055,7 +1268,7 @@ export default function Page() {
         </div>
       ) : (
         <>
-          {/* DASHBOARD */}
+          {/* METRICS */}
           <div className="dashGrid">
             <Metric label="Overall" value={scoreObj?.overall ?? overall} />
             <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
@@ -1111,7 +1324,7 @@ export default function Page() {
             ) : null}
           </div>
 
-          {/* Audio */}
+          {/* AUDIO */}
           <div className="divider" style={{ marginTop: 14 }} />
           <div style={{ marginTop: 12 }}>
             {audioUrl ? (
@@ -1129,7 +1342,7 @@ export default function Page() {
             )}
           </div>
 
-          {/* Task detail */}
+          {/* TASK DETAIL */}
           <div className="divider" style={{ marginTop: 14 }} />
 
           {task === "relevance" ? (
@@ -1140,8 +1353,32 @@ export default function Page() {
                 </span>
                 {relevanceScore != null ? <span className="badge accentBadge">score: {relevanceScore}</span> : null}
               </div>
-              <div className="muted" style={{ marginTop: 6 }}>
-                Tip: Relevance chấm **đúng ngữ cảnh** theo context. Nói lệch đề → class FALSE.
+
+              {relevanceExtra?.length ? (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Relevance details (SpeechAce trả thêm)</div>
+                  <div className="kvList">
+                    {relevanceExtra.map(([k, v]) => (
+                      <div key={k} className="kvRow">
+                        <div className="kvKey">{k}</div>
+                        <div className="kvVal">{typeof v === "string" ? v : JSON.stringify(v)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="muted" style={{ marginTop: 10 }}>
+                  <b>TRUE/FALSE nghĩa là gì?</b>
+                  <div style={{ marginTop: 6 }}>
+                    • <b>TRUE</b>: bài nói bám đúng “relevance_context”, đúng chủ đề/ý chính.
+                    <br />
+                    • <b>FALSE</b>: lạc đề, nói sang nội dung khác, hoặc nội dung quá ngắn/thiếu tín hiệu bám đề.
+                  </div>
+                </div>
+              )}
+
+              <div className="muted" style={{ marginTop: 10 }}>
+                Tip: nhắc lại keyword của đề ở mở bài, trả lời 2–3 ý chính, tránh kể lan man.
               </div>
             </div>
           ) : null}
@@ -1161,7 +1398,8 @@ export default function Page() {
 
               {!hasHighlight ? (
                 <div className="muted">
-                  Chưa thấy word_score_list để highlight. Nếu SpeechAce trả về word_score_list, UI sẽ bôi màu theo quality_score.
+                  Chưa thấy word_score_list để highlight. Nếu SpeechAce trả về word_score_list, UI sẽ bôi màu theo
+                  quality_score.
                 </div>
               ) : null}
 
@@ -1171,7 +1409,7 @@ export default function Page() {
                   if (t.kind === "punct") return <span key={idx}>{t.text}</span>;
 
                   const w = t.attach;
-                  const band = qualityBand(w?.quality ?? null);
+                  const band = qualityBand((w as any)?.quality ?? null);
 
                   const style: CSSProperties =
                     band === "good"
@@ -1217,7 +1455,85 @@ export default function Page() {
             </>
           ) : null}
 
-          {/* Warnings / issues */}
+          {/* PROGRESS DASHBOARD */}
+          <div className="divider" style={{ marginTop: 14 }} />
+          <div className="dashCard" style={{ marginTop: 12 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontWeight: 1000 }}>Dashboard tiến bộ</div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <span className="badge accentBadge">History: {history.length}</span>
+                <button
+                  className="btn3d btnTiny"
+                  onClick={() => {
+                    saveHistory([]);
+                    setHistoryVersion((v) => v + 1);
+                  }}
+                >
+                  🧹 Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="dashControls">
+              <div className="field">
+                <label>Bucket</label>
+                <select className="select" value={dashBucket} onChange={(e) => setDashBucket(e.target.value as any)}>
+                  <option value="day">Theo ngày</option>
+                  <option value="week">Theo tuần (ISO)</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label>Task</label>
+                <select className="select" value={dashTask} onChange={(e) => setDashTask(e.target.value as any)}>
+                  <option value="all">All</option>
+                  <option value="reading">Reading</option>
+                  <option value="open-ended">Open-ended</option>
+                  <option value="relevance">Relevance</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label>Metric</label>
+                <select className="select" value={dashMetric} onChange={(e) => setDashMetric(e.target.value as any)}>
+                  <option value="overall">Overall</option>
+                  <option value="pronunciation">Pronunciation</option>
+                  <option value="fluency">Fluency</option>
+                  <option value="grammar">Grammar</option>
+                  <option value="coherence">Coherence</option>
+                  <option value="vocab">Vocab</option>
+                  <option value="relevanceScore">Relevance score</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <Sparkline data={chartData} height={70} />
+            </div>
+
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer" }}>Xem 10 bài gần nhất</summary>
+              <div style={{ marginTop: 8 }} className="historyList">
+                {history.slice(0, 10).map((h) => (
+                  <div key={h.id} className="historyRow">
+                    <div className="muted">
+                      {new Date(h.ts).toLocaleString()} • <b>{h.task}</b>
+                    </div>
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <span className="badge accentBadge">Overall: {h.overall != null ? h.overall.toFixed(1) : "n/a"}</span>
+                      <span className="badge">P: {h.pronunciation ?? "n/a"}</span>
+                      <span className="badge">F: {h.fluency ?? "n/a"}</span>
+                      {h.task === "relevance" ? (
+                        <span className="badge">Rel: {h.relevanceClass ?? "n/a"}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+
+          {/* ISSUES */}
           {Array.isArray(issueList) && issueList.length ? (
             <>
               <div className="divider" style={{ marginTop: 14 }} />
@@ -1236,7 +1552,7 @@ export default function Page() {
             </>
           ) : null}
 
-          {/* Debug */}
+          {/* DEBUG */}
           <details style={{ marginTop: 12 }}>
             <summary style={{ cursor: "pointer" }}>Xem JSON trả về (debug)</summary>
             <pre
@@ -1273,7 +1589,8 @@ export default function Page() {
       <div className="card">
         <div className="h1">SpeechAce Practice (Web)</div>
         <p className="sub">
-          Reading / Open-ended / Relevance. Upload hoặc ghi âm → chấm. (Audio user phát lại qua presigned URL; mẫu phát âm dùng Browser TTS nếu cần.)
+          Reading / Open-ended / Relevance. Upload hoặc ghi âm → chấm. (Audio user phát lại qua presigned URL; mẫu phát âm
+          dùng Browser TTS nếu cần.)
         </p>
 
         <div className={`proGrid ${themeClass}`}>
@@ -1356,12 +1673,7 @@ export default function Page() {
                 <div className="grid2">
                   <div className="field">
                     <label>Dialect</label>
-                    <select
-                      className="select"
-                      value={dialect}
-                      onChange={(e) => setDialect(e.target.value as any)}
-                      disabled={busy || recording}
-                    >
+                    <select className="select" value={dialect} onChange={(e) => setDialect(e.target.value as any)} disabled={busy || recording}>
                       {DIALECTS.map((d) => (
                         <option key={d} value={d}>
                           {d === "en-gb" ? "English (UK) — en-gb" : "English (US) — en-us"}
@@ -1389,12 +1701,7 @@ export default function Page() {
 
                 <div className="row" style={{ marginTop: 10 }}>
                   <label className="row" style={{ gap: 10, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={detectDialect}
-                      onChange={(e) => setDetectDialect(e.target.checked)}
-                      disabled={busy || recording}
-                    />
+                    <input type="checkbox" checked={detectDialect} onChange={(e) => setDetectDialect(e.target.checked)} disabled={busy || recording} />
                     <span className="muted">Detect dialect (SpeechAce)</span>
                   </label>
                 </div>
@@ -1412,18 +1719,10 @@ export default function Page() {
                     <div className="field">
                       <label>Reference source</label>
                       <div className="row" style={{ flexWrap: "wrap" }}>
-                        <button
-                          className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`}
-                          onClick={() => setMode("library")}
-                          disabled={busy || recording}
-                        >
+                        <button className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`} onClick={() => setMode("library")} disabled={busy || recording}>
                           Văn mẫu
                         </button>
-                        <button
-                          className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`}
-                          onClick={() => setMode("custom")}
-                          disabled={busy || recording}
-                        >
+                        <button className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`} onClick={() => setMode("custom")} disabled={busy || recording}>
                           User dán text
                         </button>
                       </div>
@@ -1451,12 +1750,7 @@ export default function Page() {
                     <>
                       <div className="field">
                         <label>Chọn văn mẫu</label>
-                        <select
-                          className="select"
-                          value={selectedId}
-                          onChange={(e) => setSelectedId(e.target.value)}
-                          disabled={busy || recording}
-                        >
+                        <select className="select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} disabled={busy || recording}>
                           {passages.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.title}
@@ -1484,24 +1778,12 @@ export default function Page() {
                     <>
                       <div className="field">
                         <label>Tiêu đề (tuỳ chọn - để lưu vào thư viện)</label>
-                        <input
-                          className="input"
-                          value={customTitle}
-                          onChange={(e) => setCustomTitle(e.target.value)}
-                          disabled={busy || recording}
-                          placeholder="My passage"
-                        />
+                        <input className="input" value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} disabled={busy || recording} placeholder="My passage" />
                       </div>
 
                       <div className="field" style={{ marginTop: 10 }}>
                         <label>Reference text (bắt buộc)</label>
-                        <textarea
-                          className="textarea"
-                          value={customText}
-                          onChange={(e) => setCustomText(e.target.value)}
-                          disabled={busy || recording}
-                          placeholder="Dán đoạn bạn muốn user đọc..."
-                        />
+                        <textarea className="textarea" value={customText} onChange={(e) => setCustomText(e.target.value)} disabled={busy || recording} placeholder="Dán đoạn bạn muốn user đọc..." />
                       </div>
 
                       <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
@@ -1521,12 +1803,7 @@ export default function Page() {
                   </div>
                   <div className="field">
                     <label>Prompt</label>
-                    <textarea
-                      className="textarea"
-                      value={openPrompt}
-                      onChange={(e) => setOpenPrompt(e.target.value)}
-                      disabled={busy || recording}
-                    />
+                    <textarea className="textarea" value={openPrompt} onChange={(e) => setOpenPrompt(e.target.value)} disabled={busy || recording} />
                   </div>
                   <div className="muted" style={{ marginTop: 8 }}>
                     Tip: nói tự nhiên 1–2 phút (API tối đa), nên có mở bài – thân bài – kết.
@@ -1540,12 +1817,7 @@ export default function Page() {
                   </div>
                   <div className="field">
                     <label>Context</label>
-                    <textarea
-                      className="textarea"
-                      value={relevanceContext}
-                      onChange={(e) => setRelevanceContext(e.target.value)}
-                      disabled={busy || recording}
-                    />
+                    <textarea className="textarea" value={relevanceContext} onChange={(e) => setRelevanceContext(e.target.value)} disabled={busy || recording} />
                   </div>
                   <div className="muted" style={{ marginTop: 8 }}>
                     Tip: nói đúng trọng tâm đề bài để relevance lên TRUE.
@@ -1582,7 +1854,7 @@ export default function Page() {
                   <label>Upload audio file (mp3/wav/webm/…)</label>
                   <input
                     ref={fileInputRef}
-                    key={`file-${task}`} // đổi tab là remount input => không kẹt UI tên file
+                    key={`file-${task}`}
                     className="input fileInput"
                     type="file"
                     accept="audio/*"
@@ -1628,11 +1900,18 @@ export default function Page() {
           --shadow: 0 18px 60px rgba(2, 6, 23, 0.2);
           --text: #0f172a;
           --muted: #475569;
+
+          --accent: #6366f1;
+          --accentSoft: rgba(99, 102, 241, 0.14);
+          --accentBorder: rgba(99, 102, 241, 0.26);
+          --accentText: #1e1b4b;
+
+          --accentA: #6366f1;
+          --accentB: #4338ca;
         }
 
         body {
-          background:
-            radial-gradient(1000px 700px at 10% 10%, rgba(99, 102, 241, 0.35), transparent 60%),
+          background: radial-gradient(1000px 700px at 10% 10%, rgba(99, 102, 241, 0.35), transparent 60%),
             radial-gradient(900px 650px at 90% 0%, rgba(34, 197, 94, 0.28), transparent 55%),
             linear-gradient(180deg, #0b1020, #0b1020);
         }
@@ -1664,7 +1943,6 @@ export default function Page() {
           margin-top: 6px;
         }
 
-        /* Layout: menu trái - kết quả phải */
         .proGrid {
           display: grid;
           grid-template-columns: 420px 1fr;
@@ -1717,7 +1995,6 @@ export default function Page() {
           border: 3px solid rgba(255, 255, 255, 0.75);
         }
 
-        /* Sections */
         .section {
           background: rgba(255, 255, 255, 0.98);
           border: 1px solid rgba(15, 23, 42, 0.1);
@@ -1763,6 +2040,12 @@ export default function Page() {
           font-size: 12px;
         }
 
+        .accentBadge {
+          background: var(--accentSoft) !important;
+          border: 1px solid var(--accentBorder) !important;
+          color: var(--accentText) !important;
+        }
+
         .grid2 {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -1775,7 +2058,6 @@ export default function Page() {
           align-items: center;
         }
 
-        /* Inputs */
         .input,
         .select,
         .textarea {
@@ -1839,26 +2121,48 @@ export default function Page() {
         .btnActive {
           outline: 3px solid rgba(255, 255, 255, 0.35);
         }
-        /* ===== Tabs: inactive dim, active bright (theo màu từng task) ===== */
 
-        /* Màu accent theo task (đang dùng themeClass trên .proGrid) */
+        /* ===== Theme vars per task (ONE PLACE) ===== */
         .themeReading {
           --tab1: #6366f1;
           --tab2: #4338ca;
           --tabShadow: rgba(67, 56, 202, 0.35);
+
+          --accentA: #06b6d4;
+          --accentB: #3b82f6;
+          --accent: #3b82f6;
+          --accentText: #083344;
+          --accentSoft: rgba(6, 182, 212, 0.12);
+          --accentBorder: rgba(6, 182, 212, 0.26);
         }
 
         .themeOpen {
           --tab1: #22c55e;
           --tab2: #16a34a;
           --tabShadow: rgba(22, 163, 74, 0.35);
+
+          --accentA: #8b5cf6;
+          --accentB: #6366f1;
+          --accent: #6366f1;
+          --accentText: #2e1065;
+          --accentSoft: rgba(139, 92, 246, 0.12);
+          --accentBorder: rgba(139, 92, 246, 0.26);
         }
+
         .themeRel {
           --tab1: #f59e0b;
           --tab2: #d97706;
           --tabShadow: rgba(217, 119, 6, 0.35);
+
+          --accentA: #f97316;
+          --accentB: #ef4444;
+          --accent: #ef4444;
+          --accentText: #7c2d12;
+          --accentSoft: rgba(249, 115, 22, 0.12);
+          --accentBorder: rgba(249, 115, 22, 0.26);
         }
-        /* Tab thường (không chọn) => nhạt */
+
+        /* Tabs: inactive dim, active bright */
         .tabBtn {
           width: 100%;
           justify-content: flex-start;
@@ -1872,66 +2176,15 @@ export default function Page() {
           opacity: 0.75;
         }
 
-        /* Tab đang chọn => sáng + có màu theo task */
         .tabBtnActive {
           opacity: 1;
           color: #fff;
           background: linear-gradient(180deg, var(--tab1), var(--tab2));
           box-shadow: 0 10px 0 var(--tabShadow), 0 16px 28px rgba(2, 6, 23, 0.22);
         }
+
         .tabBtnActive:hover {
           filter: brightness(1.03);
-        }
-
-        /* Theme per task */
-        .themeReading {
-          --accentA: #06b6d4;
-          --accentB: #3b82f6;
-          --accentText: #083344;
-          --accentSoft: rgba(6, 182, 212, 0.12);
-          --accentBorder: rgba(6, 182, 212, 0.26);
-        }
-
-        .themeOpen {
-          --accentA: #8b5cf6;
-          --accentB: #6366f1;
-          --accentText: #2e1065;
-          --accentSoft: rgba(139, 92, 246, 0.12);
-          --accentBorder: rgba(139, 92, 246, 0.26);
-        }
-
-        .themeRel {
-          --accentA: #f97316;
-          --accentB: #ef4444;
-          --accentText: #7c2d12;
-          --accentSoft: rgba(249, 115, 22, 0.12);
-          --accentBorder: rgba(249, 115, 22, 0.26);
-        }
-
-        .accentBadge {
-          background: var(--accentSoft);
-          border: 1px solid var(--accentBorder);
-          color: var(--accentText);
-        }
-
-        .btnTask {
-          color: #fff;
-          justify-content: flex-start;
-        }
-
-        .btnTaskReading {
-          background: linear-gradient(180deg, #06b6d4, #3b82f6);
-          box-shadow: 0 10px 0 rgba(59, 130, 246, 0.25), 0 16px 28px rgba(2, 6, 23, 0.22);
-        }
-
-        .btnTaskOpen {
-          background: linear-gradient(180deg, #8b5cf6, #6366f1);
-          box-shadow: 0 10px 0 rgba(99, 102, 241, 0.25), 0 16px 28px rgba(2, 6, 23, 0.22);
-        }
-
-        .btnTaskRel {
-          background: linear-gradient(180deg, #f97316, #ef4444);
-          box-shadow: 0 10px 0 rgba(239, 68, 68, 0.22), 0 16px 28px rgba(2, 6, 23, 0.22);
         }
 
         /* Results header + dashboard */
@@ -1943,8 +2196,7 @@ export default function Page() {
           padding: 14px;
           border-radius: 18px;
           border: 1px solid rgba(15, 23, 42, 0.1);
-          background:
-            radial-gradient(700px 240px at 20% 0%, var(--accentSoft), transparent 60%),
+          background: radial-gradient(700px 240px at 20% 0%, var(--accentSoft), transparent 60%),
             linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9));
           box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
         }
@@ -1953,6 +2205,19 @@ export default function Page() {
           font-weight: 1000;
           font-size: 18px;
           color: var(--text);
+          position: relative;
+          padding-left: 10px;
+        }
+
+        .resultsTitle:before {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 3px;
+          bottom: 3px;
+          width: 6px;
+          border-radius: 999px;
+          background: var(--accent);
         }
 
         .resultsSub {
@@ -1975,6 +2240,7 @@ export default function Page() {
           padding: 12px;
           background: rgba(255, 255, 255, 0.98);
           box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+          border-left: 6px solid var(--accent);
         }
 
         .metricTop {
@@ -2123,17 +2389,82 @@ export default function Page() {
           font-weight: 800;
         }
 
+        /* Dashboard card */
+        .dashCard {
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          border-radius: 18px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+        }
+
+        .dashControls {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 10px;
+          margin-top: 10px;
+        }
+
+        .historyList {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .historyRow {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          border-radius: 14px;
+          padding: 10px;
+          background: rgba(255, 255, 255, 0.98);
+        }
+
+        .btnTiny {
+          padding: 8px 10px;
+          border-radius: 12px;
+        }
+
+        /* Key-value list for relevance extra */
+        .kvList {
+          display: grid;
+          gap: 8px;
+        }
+
+        .kvRow {
+          display: grid;
+          grid-template-columns: 160px 1fr;
+          gap: 10px;
+          padding: 10px;
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(255, 255, 255, 0.98);
+        }
+
+        .kvKey {
+          font-weight: 900;
+          color: rgba(15, 23, 42, 0.72);
+        }
+
+        .kvVal {
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 12px;
+          overflow-wrap: anywhere;
+        }
+
         /* Responsive */
         @media (max-width: 980px) {
           .proGrid {
             grid-template-columns: 1fr;
           }
-
           .sideScroll {
             max-height: none;
           }
-
           .dashGrid {
+            grid-template-columns: 1fr;
+          }
+          .dashControls {
             grid-template-columns: 1fr;
           }
         }
@@ -2142,26 +2473,25 @@ export default function Page() {
           .grid2 {
             grid-template-columns: 1fr !important;
           }
-
           .row {
             flex-wrap: wrap !important;
           }
-
           .btn3d {
             min-height: 44px;
             font-size: 16px;
           }
-
           .input,
           .select,
           .textarea,
           input[type="file"].fileInput {
             font-size: 16px !important;
           }
-
           input[type="file"].fileInput {
             height: auto !important;
             padding: 10px 12px !important;
+          }
+          .kvRow {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
