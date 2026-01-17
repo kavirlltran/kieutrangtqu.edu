@@ -493,6 +493,30 @@ export default function Page() {
     void exerciseVersion;
     return loadExercises();
   }, [exerciseVersion]);
+  
+  function deleteExerciseById(exIdToDelete: string) {
+    if (typeof window === "undefined") return;
+
+    const ok = window.confirm("Xóa bài tập này? (Không thể hoàn tác)");
+    if (!ok) return;
+
+    // 1) xóa khỏi danh sách exercises trong localStorage
+    const nextList = exercises.filter((x) => x.id !== exIdToDelete);
+    saveExercises(nextList);
+    setExerciseVersion((v) => v + 1);
+
+    // 2) xóa luôn đáp án đã lưu (nếu có)
+    setExerciseAnswers((prev) => {
+      const next = { ...(prev || {}) };
+      delete next[exIdToDelete];
+      return next;
+    });
+
+    // 3) nếu đang mở đúng bài vừa xóa -> chuyển sang bài khác (hoặc rỗng)
+    if (openExerciseId === exIdToDelete) {
+      setOpenExerciseId(nextList[0]?.id || "");
+    }
+  }
 
   // ✅ open exercise viewer
   const [openExerciseId, setOpenExerciseId] = useState<string>("");
@@ -1497,6 +1521,18 @@ export default function Page() {
                           Dùng làm Prompt
                         </button>
                       ) : null}
+                      <button
+                        className="btn3d btnTiny btnDanger"
+                        title="Xóa bài tập"
+                        onClick={() => deleteExerciseById(ex.id)}
+                        style={{
+                          padding: "8px 10px",
+                          minWidth: 44,
+                          justifyContent: "center",
+                        }}
+                      >
+                        🗑
+                      </button>
                     </div>
                   </div>
                 ))}
