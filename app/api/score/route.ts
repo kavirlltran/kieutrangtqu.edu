@@ -1,5 +1,5 @@
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2Client, r2Bucket, r2PublicBaseUrl } from "@/lib/r2";

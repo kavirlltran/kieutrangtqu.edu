@@ -53,6 +53,45 @@ type HistoryEntry = {
 const HISTORY_STORAGE_KEY = "speechace_history_v1";
 const HISTORY_MAX = 200;
 
+type ExerciseSet = {
+  id: string;
+  title: string;
+  task: "reading" | "open-ended";
+  level: string;
+  createdAt: number;
+  newContent: { title: string; text: string };
+  exercises: any[];
+  answerKey: any;
+  rubric: any;
+};
+
+const EXERCISE_STORAGE_KEY = "speechace_exercises_v1";
+const EXERCISE_MAX = 50;
+
+function loadExercises(): ExerciseSet[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(EXERCISE_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as ExerciseSet[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveExercises(items: ExerciseSet[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(EXERCISE_STORAGE_KEY, JSON.stringify(items.slice(0, EXERCISE_MAX)));
+  } catch {}
+}
+
+function pushExercise(item: ExerciseSet) {
+  const cur = loadExercises();
+  saveExercises([item, ...cur].slice(0, EXERCISE_MAX));
+}
+
 function safeNum(v: any): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -63,7 +102,7 @@ function loadHistory(): HistoryEntry[] {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    return Array.isArray(arr) ? (arr as HistoryEntry[]) : [];
   } catch {
     return [];
   }
@@ -163,6 +202,29 @@ function qualityBand(q: number | null | undefined): "none" | "good" | "warn" | "
   if (q >= 70) return "warn";
   return "bad";
 }
+function seededShuffle<T>(arr: T[], seedStr: string): T[] {
+  const a = [...arr];
+
+  // tạo seed số từ string
+  let seed = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    seed = (seed * 31 + seedStr.charCodeAt(i)) >>> 0;
+  }
+
+  // xorshift32
+  const rand = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 0xffffffff;
+  };
+
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 function formatPhonesForTooltip(w: WordDisplay) {
   // @ts-ignore
@@ -223,7 +285,6 @@ function buildWordDisplays(usedText: string, speechace: any): WordDisplay[] {
     let pickedIndex = -1;
 
     for (let k = j; k < Math.min(list.length, j + 4); k++) {
-      // FIX: WordScoreListItem không có text => chỉ dùng .word
       const candidateWord = normalizeWord(list[k]?.word || "");
       if (candidateWord && candidateWord === norm) {
         picked = list[k];
@@ -364,6 +425,8 @@ function Sparkline({
   );
 }
 
+type ExerciseAnswers = Record<string, Record<string, any>>; // exId -> itemId -> answer
+
 export default function Page() {
   const [mounted, setMounted] = useState(false);
 
@@ -418,6 +481,86 @@ export default function Page() {
     return loadHistory();
   }, [historyVersion]);
 
+  // ===== Exercise generator (saved in localStorage) =====
+  const [exerciseLoading, setExerciseLoading] = useState(false);
+  const [exerciseErr, setExerciseErr] = useState<string | null>(null);
+  const [exerciseVersion, setExerciseVersion] = useState(0);
+  const [exerciseLevel, setExerciseLevel] = useState("B1");
+  const [rightTab, setRightTab] = useState<"score" | "exercises">("score");
+  const [revealAnswerMap, setRevealAnswerMap] = useState<Record<string, boolean>>({});
+
+  const exercises = useMemo(() => {
+    void exerciseVersion;
+    return loadExercises();
+  }, [exerciseVersion]);
+
+  // ✅ open exercise viewer
+  const [openExerciseId, setOpenExerciseId] = useState<string>("");
+  const [openExercise, setOpenExercise] = useState<ExerciseSet | null>(null);
+
+  // ✅ answers store (localStorage)
+  const EX_ANS_KEY = "speechace_exercise_answers_v1";
+  const [exerciseAnswers, setExerciseAnswers] = useState<ExerciseAnswers>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(EX_ANS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") setExerciseAnswers(parsed);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(EX_ANS_KEY, JSON.stringify(exerciseAnswers));
+    } catch {}
+  }, [exerciseAnswers]);
+
+  function getExerciseAnswer(exId: string, itemId: string) {
+    return exerciseAnswers?.[exId]?.[itemId] ?? null;
+  }
+
+  function setExerciseAnswer(exId: string, itemId: string, value: any) {
+    setExerciseAnswers((prev) => {
+      const next = { ...(prev || {}) };
+      const exMap = { ...(next[exId] || {}) };
+      exMap[itemId] = value;
+      next[exId] = exMap;
+      return next;
+    });
+  }
+
+  function getOrInitArrayAnswer(exId: string, itemId: string, n: number) {
+    const cur = getExerciseAnswer(exId, itemId);
+    if (Array.isArray(cur) && cur.length === n) return cur as string[];
+    return Array.from({ length: n }, () => "");
+  }
+
+  function setArrayAnswer(exId: string, itemId: string, arr: string[]) {
+    setExerciseAnswer(exId, itemId, arr);
+  }
+
+  // keep openExercise synced
+  useEffect(() => {
+    if (!openExerciseId) {
+      setOpenExercise(null);
+      return;
+    }
+    const ex = exercises.find((x) => x.id === openExerciseId) || null;
+    setOpenExercise(ex);
+  }, [openExerciseId, exercises]);
+
+  // if list has items but no selection yet -> select first
+  useEffect(() => {
+    if (!exercises.length) return;
+    if (!openExerciseId) setOpenExerciseId(exercises[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercises.length]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -468,6 +611,7 @@ export default function Page() {
     try {
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch {}
+    setRightTab("score");
     updateTaskState({ uploadedFile: null }, task);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
@@ -727,7 +871,8 @@ export default function Page() {
     taskAtRecordRef.current = task;
 
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
-    if (task === "reading" && wordsCount(refText) < 1) return updateTaskState({ err: "Bạn phải nạp Reference text trước khi ghi âm." });
+    if (task === "reading" && wordsCount(refText) < 1)
+      return updateTaskState({ err: "Bạn phải nạp Reference text trước khi ghi âm." });
 
     if (uploadedFile) updateTaskState({ uploadedFile: null });
 
@@ -869,8 +1014,6 @@ export default function Page() {
         endpoint = "/api/relevance";
       }
 
-      console.log("[score] task =", t, "endpoint =", endpoint, "payload =", payload);
-
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -878,8 +1021,6 @@ export default function Page() {
       });
 
       const raw = await res.text();
-      console.log("[score] status =", res.status, "raw(head) =", raw?.slice(0, 200));
-
       let json: any = null;
       try {
         json = raw ? JSON.parse(raw) : {};
@@ -968,8 +1109,56 @@ export default function Page() {
     resetRunState(task);
     if (!uploadedFile) return;
     if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
-    if (task === "reading" && wordsCount(refText) < 1) return updateTaskState({ err: "Bạn phải nạp Reference text trước khi chấm." });
+    if (task === "reading" && wordsCount(refText) < 1)
+      return updateTaskState({ err: "Bạn phải nạp Reference text trước khi chấm." });
     await uploadThenScore(uploadedFile, undefined, task);
+  }
+
+  async function generateExerciseNow() {
+    try {
+      setExerciseErr(null);
+      setExerciseLoading(true);
+
+      // chỉ hỗ trợ reading/open-ended
+      if (task === "relevance") {
+        setExerciseErr("Chưa hỗ trợ tạo bài tập cho Relevance.");
+        return;
+      }
+
+      const source = task === "reading" ? (refText || selected?.text || "").trim() : openPrompt.trim();
+
+      if (!source) {
+        setExerciseErr("Chưa có nội dung nguồn để tạo bài tập (text/prompt đang trống).");
+        return;
+      }
+
+      const r = await fetch("/api/generate-exercise", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          task,
+          sourceText: source,
+          level: exerciseLevel,
+          targetSeconds: 90,
+        }),
+      });
+
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(j?.error || "Generate failed");
+
+      const ex = j?.exercise as ExerciseSet;
+      if (!ex?.id) throw new Error("API trả về thiếu exercise");
+
+      pushExercise(ex);
+      setExerciseVersion((v) => v + 1);
+
+      setOpenExerciseId(ex.id);
+      setRightTab("exercises");
+    } catch (e: any) {
+      setExerciseErr(e?.message || "Error");
+    } finally {
+      setExerciseLoading(false);
+    }
   }
 
   // Fetch audioUrl when current task result has audioKey
@@ -1020,10 +1209,10 @@ export default function Page() {
     return () => a.removeEventListener("timeupdate", onTime);
   }, [audioUrl]);
 
-  const recorderName = hasMediaRecorder() ? "MediaRecorder" : "WAV fallback";
+  const recorderName = mounted ? (hasMediaRecorder() ? "MediaRecorder" : "WAV fallback") : "Detecting...";
 
   const overall =
-    result?.task === "reading"
+    task === "reading"
       ? result?.speechace?.text_score?.speechace_score?.overall ??
         result?.speechace?.text_score?.overall ??
         result?.speechace?.speechace_score?.overall ??
@@ -1239,29 +1428,557 @@ export default function Page() {
     return groupHistory(history, dashBucket, dashTask, dashMetric).slice(-24);
   }, [history, dashBucket, dashTask, dashMetric]);
 
-  const resultsPanel = (
-    <div>
-      <div className="resultsHeader">
-        <div>
-          <div className="resultsTitle">Kết quả chấm</div>
-          <div className="resultsSub">
-            {task === "reading"
-              ? "Reading (tham chiếu theo reference text)"
-              : task === "open-ended"
-              ? "Open-ended (tự do theo prompt)"
-              : "Relevance (đúng/ngữ cảnh theo context)"}
+  function ExercisesPanel() {
+    return (
+      <div>
+        <div className="divider" style={{ marginTop: 14 }} />
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+          <div style={{ fontWeight: 1000 }}>🧩 Bài tập</div>
+          <span className="badge accentBadge">Tổng: {exercises.length}</span>
+        </div>
+
+        {!exercises.length ? (
+          <div className="muted" style={{ marginTop: 10 }}>
+            Chưa có bài tập. Bấm “Tạo bài tập mới” ở menu trái.
           </div>
-        </div>
+        ) : (
+          <div className="exSplit">
+            {/* Cột trái: danh sách bài tập */}
+            <div className="exList">
+              <div style={{ display: "grid", gap: 10 }}>
+                {exercises.map((ex) => (
+                  <div key={ex.id} className="quickCard">
+                    <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                      <div style={{ fontWeight: 1000 }}>{ex.title}</div>
+                      <span className="badge accentBadge">
+                        {ex.task} • {ex.level}
+                      </span>
+                    </div>
 
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <span className="badge accentBadge">{task}</span>
-          {typeof overall === "number" ? <span className="badge accentBadge">Overall: {overall.toFixed(1)}</span> : null}
-          {busy ? <span className="badge">⏳ Đang chấm…</span> : null}
-        </div>
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      New: <b>{ex.newContent?.title}</b>
+                    </div>
+
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        className={`btn3d ${openExerciseId === ex.id ? "btnPrimary" : ""}`}
+                        onClick={() => {
+                          setOpenExerciseId(ex.id);
+                          setRightTab("exercises");
+                        }}
+                      >
+                        {openExerciseId === ex.id ? "✅ Đang mở" : "📌 Mở"}
+                      </button>
+
+                      {ex.task === "reading" ? (
+                        <button
+                          className="btn3d"
+                          onClick={() => {
+                            setTask("reading");
+                            setMode("custom");
+                            setCustomTitle(ex.newContent?.title || "Generated passage");
+                            setCustomText(ex.newContent?.text || "");
+                            setRightTab("score");
+                          }}
+                        >
+                          Dùng làm Reading
+                        </button>
+                      ) : null}
+
+                      {ex.task === "open-ended" ? (
+                        <button
+                          className="btn3d"
+                          onClick={() => {
+                            setTask("open-ended");
+                            setOpenPrompt(ex.newContent?.text || "");
+                            setRightTab("score");
+                          }}
+                        >
+                          Dùng làm Prompt
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Cột phải: viewer bài tập */}
+            <div className="exViewer">
+              {!openExercise ? (
+                <div className="quickCard">
+                  <div style={{ fontWeight: 1000 }}>Chưa chọn bài tập</div>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Bấm “Mở” ở danh sách bên trái để xem chi tiết.
+                  </div>
+                </div>
+              ) : (
+                <div className="quickCard">
+                  <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontWeight: 1000 }}>{openExercise.title}</div>
+                    <span className="badge accentBadge">
+                      {openExercise.task} • {openExercise.level}
+                    </span>
+                  </div>
+
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    New content: <b>{openExercise.newContent?.title}</b>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,.92)",
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.65,
+                    }}
+                  >
+                    {openExercise.newContent?.text || ""}
+                  </div>
+
+                  <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                    <button className="btn3d" onClick={() => toggleTts(openExercise.newContent?.text || "")}>
+                      {ttsSpeaking ? "⏹ Stop mẫu (TTS)" : "🔈 Nghe New content (TTS)"}
+                    </button>
+                  </div>
+
+                  <div className="divider" style={{ marginTop: 12 }} />
+                  <div style={{ fontWeight: 1000, marginTop: 10 }}>📝 Câu hỏi</div>
+
+                  <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                    {(() => {
+                      const items = Array.isArray(openExercise.exercises) ? openExercise.exercises : [];
+                      const byType = (t: string) => items.find((x: any) => String(x?.type || "").toLowerCase() === t);
+
+                      const mcq = byType("mcq");
+                      const gap = byType("gap_fill");
+                      const vocab = byType("vocab_pack");
+                      const pron = byType("pronunciation_drill");
+                      const spk = byType("speaking_outline");
+                      const mis = byType("common_mistakes");
+
+                      const exId = openExercise.id;
+
+                      return (
+                        <>
+                          {/* 1) MCQ */}
+                          {mcq ? (
+                            <div className="quickCard" style={{ borderLeft: "6px solid var(--accent)" }}>
+                              <div style={{ fontWeight: 1000 }}>1) Trắc nghiệm (MCQ)</div>
+                              <div className="muted" style={{ marginTop: 6 }}>
+                                Chọn đáp án A/B/C/D
+                              </div>
+
+                              <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                                {(Array.isArray((mcq as any).questions) ? (mcq as any).questions : []).map(
+                                  (q: any, idx: number) => {
+                                    const qid = String(q?.id || `q${idx + 1}`);
+                                    const userAns = getExerciseAnswer(exId, qid);
+                                    const correct = String(q?.answer || openExercise.answerKey?.[qid] || "").trim();
+
+                                    const opts = q?.options || {};
+                                    const optionList: { k: string; v: string }[] = ["A", "B", "C", "D"]
+                                      .filter((k) => opts?.[k])
+                                      .map((k) => ({ k, v: String(opts[k]) }));
+
+                                    const isCorrect =
+                                      userAns != null && correct
+                                        ? String(userAns).trim().toUpperCase() === correct.toUpperCase()
+                                        : false;
+
+                                    return (
+                                      <div
+                                        key={qid}
+                                        style={{ border: "1px solid rgba(15,23,42,.08)", borderRadius: 14, padding: 10 }}
+                                      >
+                                        <div
+                                          className="row"
+                                          style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}
+                                        >
+                                          <div style={{ fontWeight: 900 }}>
+                                            {idx + 1}. {String(q?.q || q?.question || "(Không có câu hỏi)")}
+                                          </div>
+                                          {userAns ? (
+                                            <span className={`badge ${isCorrect ? "accentBadge" : ""}`}>
+                                              {isCorrect ? "✅ Đúng" : "❌ Sai"}
+                                            </span>
+                                          ) : (
+                                            <span className="badge">Chưa chọn</span>
+                                          )}
+                                        </div>
+
+                                        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                                          {optionList.map((op) => (
+                                            <label key={op.k} className="row" style={{ gap: 10, cursor: "pointer" }}>
+                                              <input
+                                                type="radio"
+                                                name={`${exId}::${qid}`}
+                                                checked={String(userAns || "") === op.k}
+                                                onChange={() => setExerciseAnswer(exId, qid, op.k)}
+                                              />
+                                              <span>
+                                                <b>{op.k}.</b> {op.v}
+                                              </span>
+                                            </label>
+                                          ))}
+                                        </div>
+
+                                        {correct ? (
+                                          <div className="muted" style={{ marginTop: 10 }}>
+                                            Đáp án: <b>{correct}</b>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  }
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="muted">Thiếu item type="mcq" trong exercises[]</div>
+                          )}
+
+                          {/* 2) GAP FILL */}
+                          {gap ? (
+                            <div className="quickCard" style={{ borderLeft: "6px solid var(--accent)" }}>
+                              <div style={{ fontWeight: 1000 }}>2) Điền từ (Gap fill)</div>
+
+                              {(() => {
+                                const itemId = String((gap as any).id || "gap1");
+                                const text = String((gap as any).text || "");
+
+                                const blanks = (text.match(/____/g) || []).length || 4;
+
+                                const bank: string[] = Array.isArray((gap as any).bank)
+                                  ? (gap as any).bank.map(String)
+                                  : [];
+
+                                const correctArr: string[] = Array.isArray((gap as any).answers)
+                                  ? (gap as any).answers.map(String)
+                                  : Array.isArray(openExercise?.answerKey?.[itemId])
+                                  ? openExercise.answerKey[itemId].map(String)
+                                  : [];
+
+                                const ans = getOrInitArrayAnswer(exId, itemId, blanks);
+
+                                // ✅ key ổn định để lưu trạng thái “Kiểm tra / Ẩn đáp án”
+                                const revealKey = `gap:${exId}:${itemId}`;
+                                const reveal = !!revealAnswerMap[revealKey];
+
+                                // ✅ xáo trộn word bank (nhưng vẫn “ổn định” theo bài)
+                                const bankShuffled = seededShuffle(bank, revealKey);
+
+                                const fillFirstEmpty = (w: string) => {
+                                  const next = [...ans];
+                                  const i = next.findIndex((x) => !String(x || "").trim());
+                                  if (i >= 0) {
+                                    next[i] = w;
+                                    setArrayAnswer(exId, itemId, next);
+                                  }
+                                };
+                                return (
+                                  <>
+                                    <div className="muted" style={{ marginTop: 6 }}>
+                                      <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+                                        <button
+                                          className="btn3d btnTiny"
+                                          onClick={() =>
+                                            setRevealAnswerMap((prev) => ({
+                                              ...prev,
+                                              [revealKey]: !reveal, // ✅ CHÚ Ý: phải có dấu [ ]
+                                            }))
+                                          }
+                                        >
+                                          {reveal ? "Ẩn đáp án" : "Kiểm tra"}
+                                        </button>
+                                      </div>
+                                      Bấm từ trong “Word bank” để điền nhanh, hoặc tự gõ.
+                                    </div>
+
+                                    <div style={{ marginTop: 10, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{text}</div>
+
+                                    {bankShuffled.length ? (
+                                      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                                        {bankShuffled.map((w, i) => (
+                                          <button key={i} className="btn3d btnTiny" onClick={() => fillFirstEmpty(w)}>
+                                            {w}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+
+                                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                                      {Array.from({ length: blanks }).map((_, i) => {
+                                        const user = ans[i] || "";
+                                        const correct = correctArr[i] || "";
+                                        const ok =
+                                          user && correct
+                                            ? user.trim().toLowerCase() === correct.trim().toLowerCase()
+                                            : false;
+
+                                        return (
+                                          <div key={i} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                                            <span className="badge">Ô trống {i + 1}</span>
+
+                                            <input
+                                              className="input"
+                                              value={user}
+                                              onChange={(e) => {
+                                                const next = [...ans];
+                                                next[i] = e.target.value;
+                                                setArrayAnswer(exId, itemId, next);
+                                              }}
+                                              placeholder="Điền đáp án..."
+                                              style={{
+                                                maxWidth: 320,
+                                                borderColor:
+                                                  reveal && user
+                                                    ? ok
+                                                      ? "rgba(34,197,94,.35)"
+                                                      : "rgba(239,68,68,.25)"
+                                                    : undefined,
+                                              }}
+                                            />
+
+                                            {reveal && correct ? (
+                                              <span className="muted">
+                                                Đáp án: <b>{correct}</b>
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="muted">Thiếu item type="gap_fill"</div>
+                          )}
+
+                          {/* 3) VOCAB PACK */}
+                          {vocab ? (
+                            <div className="quickCard" style={{ borderLeft: "6px solid var(--accent)" }}>
+                              <div style={{ fontWeight: 1000 }}>3) Từ vựng (Vocab pack)</div>
+
+                              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                                {(Array.isArray((vocab as any).items) ? (vocab as any).items : []).map(
+                                  (it: any, i: number) => (
+                                    <div
+                                      key={i}
+                                      style={{ border: "1px solid rgba(15,23,42,.08)", borderRadius: 14, padding: 10 }}
+                                    >
+                                      <div style={{ fontWeight: 1000 }}>{String(it?.word || "")}</div>
+                                      <div className="muted" style={{ marginTop: 6 }}>
+                                        Nghĩa: <b>{String(it?.meaning_vi || "")}</b>
+                                      </div>
+                                      {it?.collocation ? (
+                                        <div className="muted" style={{ marginTop: 6 }}>
+                                          Collocation: <b>{String(it.collocation)}</b>
+                                        </div>
+                                      ) : null}
+                                      {it?.example ? (
+                                        <div className="muted" style={{ marginTop: 6 }}>
+                                          Example: <b>{String(it.example)}</b>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="muted">Thiếu item type="vocab_pack"</div>
+                          )}
+
+                          {/* 4) PRONUNCIATION DRILL */}
+                          {pron ? (
+                            <div className="quickCard" style={{ borderLeft: "6px solid var(--accent)" }}>
+                              <div style={{ fontWeight: 1000 }}>4) Luyện phát âm (Pronunciation drill)</div>
+
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ fontWeight: 900 }}>Cặp âm dễ nhầm</div>
+                                <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                                  {(Array.isArray((pron as any).minimalPairs)
+                                    ? (pron as any).minimalPairs
+                                    : []
+                                  ).map((p: any, i: number) => (
+                                    <div
+                                      key={i}
+                                      className="row"
+                                      style={{ justifyContent: "space-between", flexWrap: "wrap" }}
+                                    >
+                                      <div>
+                                        <b>{String(p?.[0] || "")}</b> ↔ <b>{String(p?.[1] || "")}</b>
+                                      </div>
+                                      <button
+                                        className="btn3d btnTiny"
+                                        onClick={() => toggleTts(`${p?.[0] || ""} ... ${p?.[1] || ""}`)}
+                                      >
+                                        🔈 Nghe mẫu (TTS)
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="divider" style={{ marginTop: 12 }} />
+
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ fontWeight: 900 }}>Shadowing sentences</div>
+                                <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                                  {(Array.isArray((pron as any).shadowingSentences)
+                                    ? (pron as any).shadowingSentences
+                                    : []
+                                  ).map((s: any, i: number) => (
+                                    <div
+                                      key={i}
+                                      className="row"
+                                      style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}
+                                    >
+                                      <div style={{ lineHeight: 1.6, flex: 1 }}>{String(s || "")}</div>
+                                      <button className="btn3d btnTiny" onClick={() => toggleTts(String(s || ""))}>
+                                        🔈 Nghe mẫu (TTS)
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="muted">Thiếu item type="pronunciation_drill"</div>
+                          )}
+
+                          {/* 5) SPEAKING OUTLINE */}
+                          {spk ? (
+                            <div className="quickCard" style={{ borderLeft: "6px solid var(--accent)" }}>
+                              <div style={{ fontWeight: 1000 }}>5) Dàn ý nói (Speaking outline)</div>
+
+                              {(() => {
+                                const itemId = String((spk as any).id || "spk1");
+                                const outline = (spk as any).outline || {};
+                                const followUps: string[] = Array.isArray((spk as any).followUps)
+                                  ? (spk as any).followUps.map(String)
+                                  : [];
+                                const draft = String(getExerciseAnswer(exId, itemId) || "");
+
+                                const list = (arr: any) =>
+                                  Array.isArray(arr) ? (
+                                    <ul className="exUl">
+                                      {arr.map((x: any, i: number) => (
+                                        <li key={i}>{String(x)}</li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <div className="muted">Không có dữ liệu</div>
+                                  );
+
+                                return (
+                                  <>
+                                    <div style={{ marginTop: 10 }}>
+                                      <div style={{ fontWeight: 900 }}>Mở bài</div>
+                                      {list(outline.intro)}
+                                    </div>
+                                    <div style={{ marginTop: 10 }}>
+                                      <div style={{ fontWeight: 900 }}>Thân bài</div>
+                                      {list(outline.body)}
+                                    </div>
+                                    <div style={{ marginTop: 10 }}>
+                                      <div style={{ fontWeight: 900 }}>Kết bài</div>
+                                      {list(outline.conclusion)}
+                                    </div>
+
+                                    {followUps.length ? (
+                                      <div style={{ marginTop: 10 }}>
+                                        <div style={{ fontWeight: 900 }}>Câu hỏi phụ</div>
+                                        {list(followUps)}
+                                      </div>
+                                    ) : null}
+
+                                    <div className="divider" style={{ marginTop: 12 }} />
+
+                                    <div style={{ marginTop: 10, fontWeight: 900 }}>Bài nói của bạn (nháp)</div>
+                                    <textarea
+                                      className="textarea"
+                                      value={draft}
+                                      onChange={(e) => setExerciseAnswer(exId, itemId, e.target.value)}
+                                      placeholder="Gõ dàn ý / bài nói của bạn..."
+                                      style={{ minHeight: 110, marginTop: 8 }}
+                                    />
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="muted">Thiếu item type="speaking_outline"</div>
+                          )}
+
+                          {/* 6) COMMON MISTAKES */}
+                          {mis ? (
+                            <div className="quickCard" style={{ borderLeft: "6px solid var(--accent)" }}>
+                              <div style={{ fontWeight: 1000 }}>6) Lỗi hay gặp (Common mistakes)</div>
+
+                              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                                {(Array.isArray((mis as any).mistakes) ? (mis as any).mistakes : []).map(
+                                  (m: any, i: number) => (
+                                    <div
+                                      key={i}
+                                      style={{ border: "1px solid rgba(15,23,42,.08)", borderRadius: 14, padding: 10 }}
+                                    >
+                                      <div className="muted">
+                                        Sai: <b>{String(m?.wrong || "")}</b>
+                                      </div>
+                                      <div className="muted" style={{ marginTop: 6 }}>
+                                        Sửa: <b>{String(m?.fix || "")}</b>
+                                      </div>
+                                      {m?.note ? (
+                                        <div className="muted" style={{ marginTop: 6 }}>
+                                          Ghi chú: <b>{String(m.note)}</b>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="muted">Thiếu item type="common_mistakes"</div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {openExercise.rubric ? (
+                    <>
+                      <div className="divider" style={{ marginTop: 12 }} />
+                      <div style={{ fontWeight: 1000, marginTop: 10 }}>🎯 Tiêu chí chấm (Rubric tham khảo)</div>
+                      <div className="kvList" style={{ marginTop: 10 }}>
+                        {Object.entries(openExercise.rubric).map(([k, v]) => (
+                          <div key={k} className="kvRow">
+                            <div className="kvKey">{k}</div>
+                            <div className="kvVal">{String(v)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+    );
+  }
 
-      {err ? <div className="alertError">Lỗi: {err}</div> : null}
-
+  // ===== Score panel (rightTab === "score") =====
+  const scorePanel = (
+    <>
       {!result ? (
         <div className="muted" style={{ marginTop: 12 }}>
           Chưa có kết quả. Hãy ghi âm hoặc upload file ở menu bên trái rồi bấm chấm.
@@ -1270,76 +1987,71 @@ export default function Page() {
         <>
           {/* METRICS */}
           <div className="dashGrid">
-            <Metric label="Overall" value={scoreObj?.overall ?? overall} />
+            <Metric label="Overall" value={overall} />
             <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
             <Metric label="Fluency" value={scoreObj?.fluency} />
             <Metric label="Grammar" value={scoreObj?.grammar} />
-            <Metric label="Vocabulary" value={scoreObj?.vocab} />
             <Metric label="Coherence" value={scoreObj?.coherence} />
+            <Metric label="Vocab" value={scoreObj?.vocab} />
           </div>
 
-          <div className="quickRow">
-            {cefrObj ? (
-              <div className="quickCard">
-                <div className="quickTitle">CEFR</div>
-                <div className="quickText">
-                  Pron <b>{cefrObj?.pronunciation ?? "n/a"}</b> • Flu <b>{cefrObj?.fluency ?? "n/a"}</b> • Gram{" "}
-                  <b>{cefrObj?.grammar ?? "n/a"}</b> • Coh <b>{cefrObj?.coherence ?? "n/a"}</b> • Vocab{" "}
-                  <b>{cefrObj?.vocab ?? "n/a"}</b> • Overall <b>{cefrObj?.overall ?? "n/a"}</b>
-                </div>
+          {/* EXTRA EXAMS */}
+          {(ieltsObj || pteObj || toeicObj || cefrObj) ? (
+            <>
+              <div className="divider" style={{ marginTop: 14 }} />
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Scores tham khảo</div>
+              <div className="kvList">
+                {ieltsObj ? (
+                  <div className="kvRow">
+                    <div className="kvKey">IELTS</div>
+                    <div className="kvVal">{JSON.stringify(ieltsObj)}</div>
+                  </div>
+                ) : null}
+                {pteObj ? (
+                  <div className="kvRow">
+                    <div className="kvKey">PTE</div>
+                    <div className="kvVal">{JSON.stringify(pteObj)}</div>
+                  </div>
+                ) : null}
+                {toeicObj ? (
+                  <div className="kvRow">
+                    <div className="kvKey">TOEIC</div>
+                    <div className="kvVal">{JSON.stringify(toeicObj)}</div>
+                  </div>
+                ) : null}
+                {cefrObj ? (
+                  <div className="kvRow">
+                    <div className="kvKey">CEFR</div>
+                    <div className="kvVal">{JSON.stringify(cefrObj)}</div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-
-            {ieltsObj ? (
-              <div className="quickCard">
-                <div className="quickTitle">IELTS (ước lượng)</div>
-                <div className="quickText">
-                  Pron <b>{ieltsObj?.pronunciation ?? "n/a"}</b> • Flu <b>{ieltsObj?.fluency ?? "n/a"}</b> • Gram{" "}
-                  <b>{ieltsObj?.grammar ?? "n/a"}</b> • Coh <b>{ieltsObj?.coherence ?? "n/a"}</b> • Vocab{" "}
-                  <b>{ieltsObj?.vocab ?? ieltsObj?.lexical_resource ?? "n/a"}</b>
-                </div>
-              </div>
-            ) : null}
-
-            {pteObj ? (
-              <div className="quickCard">
-                <div className="quickTitle">PTE</div>
-                <div className="quickText">
-                  Pron <b>{pteObj?.pronunciation ?? "n/a"}</b> • Flu <b>{pteObj?.fluency ?? "n/a"}</b> • Gram{" "}
-                  <b>{pteObj?.grammar ?? "n/a"}</b> • Coh <b>{pteObj?.coherence ?? "n/a"}</b> • Vocab{" "}
-                  <b>{pteObj?.vocab ?? "n/a"}</b>
-                </div>
-              </div>
-            ) : null}
-
-            {toeicObj ? (
-              <div className="quickCard">
-                <div className="quickTitle">TOEIC</div>
-                <div className="quickText">
-                  Pron <b>{toeicObj?.pronunciation ?? "n/a"}</b> • Flu <b>{toeicObj?.fluency ?? "n/a"}</b> • Gram{" "}
-                  <b>{toeicObj?.grammar ?? "n/a"}</b> • Coh <b>{toeicObj?.coherence ?? "n/a"}</b> • Vocab{" "}
-                  <b>{toeicObj?.vocab ?? "n/a"}</b>
-                </div>
-              </div>
-            ) : null}
-          </div>
+            </>
+          ) : null}
 
           {/* AUDIO */}
           <div className="divider" style={{ marginTop: 14 }} />
-          <div style={{ marginTop: 12 }}>
-            {audioUrl ? (
-              <audio
-                ref={audioRef}
-                src={audioUrl}
-                controls
-                style={{ width: "100%" }}
-                onError={() => {
-                  void ensureFreshAudioUrl();
-                }}
-              />
-            ) : (
-              <div className="muted">Chưa có audioUrl (nếu R2 private thì cần presign).</div>
-            )}
+          <div className="quickCard">
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ fontWeight: 1000 }}>🎧 Audio</div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <button className="btn3d btnTiny" onClick={() => void ensureFreshAudioUrl()} disabled={!result?.audioKey}>
+                  🔄 Refresh URL
+                </button>
+              </div>
+            </div>
+
+            <audio
+              ref={audioRef}
+              controls
+              src={audioUrl || undefined}
+              style={{ width: "100%", marginTop: 10 }}
+            />
+            {!audioUrl ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                (Chưa có audioUrl — bấm Refresh URL nếu cần)
+              </div>
+            ) : null}
           </div>
 
           {/* TASK DETAIL */}
@@ -1398,8 +2110,7 @@ export default function Page() {
 
               {!hasHighlight ? (
                 <div className="muted">
-                  Chưa thấy word_score_list để highlight. Nếu SpeechAce trả về word_score_list, UI sẽ bôi màu theo
-                  quality_score.
+                  Chưa thấy word_score_list để highlight. Nếu SpeechAce trả về word_score_list, UI sẽ bôi màu theo quality_score.
                 </div>
               ) : null}
 
@@ -1523,9 +2234,7 @@ export default function Page() {
                       <span className="badge accentBadge">Overall: {h.overall != null ? h.overall.toFixed(1) : "n/a"}</span>
                       <span className="badge">P: {h.pronunciation ?? "n/a"}</span>
                       <span className="badge">F: {h.fluency ?? "n/a"}</span>
-                      {h.task === "relevance" ? (
-                        <span className="badge">Rel: {h.relevanceClass ?? "n/a"}</span>
-                      ) : null}
+                      {h.task === "relevance" ? <span className="badge">Rel: {h.relevanceClass ?? "n/a"}</span> : null}
                     </div>
                   </div>
                 ))}
@@ -1576,6 +2285,51 @@ export default function Page() {
           </p>
         </>
       )}
+    </>
+  );
+
+  const resultsPanel = (
+    <div>
+      <div className="resultsHeader">
+        <div>
+          <div className="resultsTitle">Kết quả chấm</div>
+          <div className="resultsSub">
+            {task === "reading"
+              ? "Reading (tham chiếu theo reference text)"
+              : task === "open-ended"
+              ? "Open-ended (tự do theo prompt)"
+              : "Relevance (đúng/ngữ cảnh theo context)"}
+          </div>
+
+          
+        </div>
+
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {/* 2 nút đổi tab */}
+          <button
+            type="button"
+            className={`btn3d btnTiny ${rightTab === "score" ? "btnPrimary" : ""}`}
+            onClick={() => setRightTab("score")}
+          >
+            📊 Chấm điểm
+          </button>
+          <button
+            type="button"
+            className={`btn3d btnTiny ${rightTab === "exercises" ? "btnPrimary" : ""}`}
+            onClick={() => setRightTab("exercises")}
+          >
+            🧩 Bài tập
+          </button>
+          {/* giữ lại badge cũ */}
+          <span className="badge accentBadge">{task}</span>
+          {typeof overall === "number" ? <span className="badge accentBadge">Overall: {overall.toFixed(1)}</span> : null}
+          {busy ? <span className="badge">⏳ Đang chấm…</span> : null}
+        </div>
+      </div>
+
+      {err ? <div className="alertError">Lỗi: {err}</div> : null}
+
+      {rightTab === "exercises" ? <ExercisesPanel /> : scorePanel}
     </div>
   );
 
@@ -1673,7 +2427,12 @@ export default function Page() {
                 <div className="grid2">
                   <div className="field">
                     <label>Dialect</label>
-                    <select className="select" value={dialect} onChange={(e) => setDialect(e.target.value as any)} disabled={busy || recording}>
+                    <select
+                      className="select"
+                      value={dialect}
+                      onChange={(e) => setDialect(e.target.value as any)}
+                      disabled={busy || recording}
+                    >
                       {DIALECTS.map((d) => (
                         <option key={d} value={d}>
                           {d === "en-gb" ? "English (UK) — en-gb" : "English (US) — en-us"}
@@ -1701,7 +2460,12 @@ export default function Page() {
 
                 <div className="row" style={{ marginTop: 10 }}>
                   <label className="row" style={{ gap: 10, cursor: "pointer" }}>
-                    <input type="checkbox" checked={detectDialect} onChange={(e) => setDetectDialect(e.target.checked)} disabled={busy || recording} />
+                    <input
+                      type="checkbox"
+                      checked={detectDialect}
+                      onChange={(e) => setDetectDialect(e.target.checked)}
+                      disabled={busy || recording}
+                    />
                     <span className="muted">Detect dialect (SpeechAce)</span>
                   </label>
                 </div>
@@ -1719,10 +2483,18 @@ export default function Page() {
                     <div className="field">
                       <label>Reference source</label>
                       <div className="row" style={{ flexWrap: "wrap" }}>
-                        <button className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`} onClick={() => setMode("library")} disabled={busy || recording}>
+                        <button
+                          className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`}
+                          onClick={() => setMode("library")}
+                          disabled={busy || recording}
+                        >
                           Văn mẫu
                         </button>
-                        <button className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`} onClick={() => setMode("custom")} disabled={busy || recording}>
+                        <button
+                          className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`}
+                          onClick={() => setMode("custom")}
+                          disabled={busy || recording}
+                        >
                           User dán text
                         </button>
                       </div>
@@ -1750,7 +2522,12 @@ export default function Page() {
                     <>
                       <div className="field">
                         <label>Chọn văn mẫu</label>
-                        <select className="select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} disabled={busy || recording}>
+                        <select
+                          className="select"
+                          value={selectedId}
+                          onChange={(e) => setSelectedId(e.target.value)}
+                          disabled={busy || recording}
+                        >
                           {passages.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.title}
@@ -1778,12 +2555,24 @@ export default function Page() {
                     <>
                       <div className="field">
                         <label>Tiêu đề (tuỳ chọn - để lưu vào thư viện)</label>
-                        <input className="input" value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} disabled={busy || recording} placeholder="My passage" />
+                        <input
+                          className="input"
+                          value={customTitle}
+                          onChange={(e) => setCustomTitle(e.target.value)}
+                          disabled={busy || recording}
+                          placeholder="My passage"
+                        />
                       </div>
 
                       <div className="field" style={{ marginTop: 10 }}>
                         <label>Reference text (bắt buộc)</label>
-                        <textarea className="textarea" value={customText} onChange={(e) => setCustomText(e.target.value)} disabled={busy || recording} placeholder="Dán đoạn bạn muốn user đọc..." />
+                        <textarea
+                          className="textarea"
+                          value={customText}
+                          onChange={(e) => setCustomText(e.target.value)}
+                          disabled={busy || recording}
+                          placeholder="Dán đoạn bạn muốn user đọc..."
+                        />
                       </div>
 
                       <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
@@ -1803,7 +2592,12 @@ export default function Page() {
                   </div>
                   <div className="field">
                     <label>Prompt</label>
-                    <textarea className="textarea" value={openPrompt} onChange={(e) => setOpenPrompt(e.target.value)} disabled={busy || recording} />
+                    <textarea
+                      className="textarea"
+                      value={openPrompt}
+                      onChange={(e) => setOpenPrompt(e.target.value)}
+                      disabled={busy || recording}
+                    />
                   </div>
                   <div className="muted" style={{ marginTop: 8 }}>
                     Tip: nói tự nhiên 1–2 phút (API tối đa), nên có mở bài – thân bài – kết.
@@ -1817,7 +2611,12 @@ export default function Page() {
                   </div>
                   <div className="field">
                     <label>Context</label>
-                    <textarea className="textarea" value={relevanceContext} onChange={(e) => setRelevanceContext(e.target.value)} disabled={busy || recording} />
+                    <textarea
+                      className="textarea"
+                      value={relevanceContext}
+                      onChange={(e) => setRelevanceContext(e.target.value)}
+                      disabled={busy || recording}
+                    />
                   </div>
                   <div className="muted" style={{ marginTop: 8 }}>
                     Tip: nói đúng trọng tâm đề bài để relevance lên TRUE.
@@ -1825,11 +2624,62 @@ export default function Page() {
                 </div>
               )}
 
+              {/* EXERCISE GENERATOR */}
+              <div className="section">
+                <div className="sectionTitle">
+                  <span>✨ Tạo bài tập mới (AI)</span>
+                  <span className="badge accentBadge">{exerciseLevel}</span>
+                </div>
+
+                <div className="grid2">
+                  <div className="field">
+                    <label>Level</label>
+                    <select
+                      className="select"
+                      value={exerciseLevel}
+                      onChange={(e) => setExerciseLevel(e.target.value)}
+                      disabled={exerciseLoading || busy || recording}
+                    >
+                      <option value="A2">A2</option>
+                      <option value="B1">B1</option>
+                      <option value="B2">B2</option>
+                      <option value="C1">C1</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>&nbsp;</label>
+                    <button
+                      className="btn3d btnPrimary"
+                      onClick={() => void generateExerciseNow()}
+                      disabled={exerciseLoading || busy || recording || task === "relevance"}
+                      style={{ width: "100%" }}
+                    >
+                      {exerciseLoading ? "⏳ Đang tạo..." : "Tạo bài tập mới"}
+                    </button>
+                  </div>
+                </div>
+
+                {task === "relevance" ? (
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Relevance tạm thời chưa tạo bài tập tự động.
+                  </div>
+                ) : null}
+
+                {exerciseErr ? <div className="alertError">Lỗi: {exerciseErr}</div> : null}
+
+                <div className="muted" style={{ marginTop: 8 }}>
+                  *Bài tập mới = passage/prompt mới + (các dạng câu hỏi do API trả về) + đáp án/rubric.
+                </div>
+              </div>
+
               {/* RECORD / UPLOAD */}
               <div className="section">
                 <div className="sectionTitle">
                   <span>Ghi âm / Upload audio</span>
-                  <span className="badge accentBadge">Recorder: {recorderName}</span>
+                  <span className="badge accentBadge" suppressHydrationWarning>
+                    Recorder: {recorderName}
+                  </span>
                 </div>
 
                 <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -1844,7 +2694,7 @@ export default function Page() {
 
                 {busy ? (
                   <div className="muted" style={{ marginTop: 8 }}>
-                    Đang upload &amp; chấm điểm... (đợi chút)
+                    Đang upload &amp; chấm điểm...
                   </div>
                 ) : null}
 
@@ -1917,9 +2767,9 @@ export default function Page() {
         }
 
         .container {
-          padding: 18px;
-          max-width: 1220px;
-          margin: 0 auto;
+          padding: 14px;
+          max-width: 100%;
+          margin: 0;
         }
 
         .card {
@@ -2122,7 +2972,7 @@ export default function Page() {
           outline: 3px solid rgba(255, 255, 255, 0.35);
         }
 
-        /* ===== Theme vars per task (ONE PLACE) ===== */
+        /* ===== Theme vars per task ===== */
         .themeReading {
           --tab1: #6366f1;
           --tab2: #4338ca;
@@ -2168,8 +3018,8 @@ export default function Page() {
           justify-content: flex-start;
           opacity: 0.55;
           background: rgba(255, 255, 255, 0.78);
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          box-shadow: 0 10px 0 rgba(15, 23, 42, 0.06), 0 16px 28px rgba(2, 6, 23, 0.10);
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          box-shadow: 0 10px 0 rgba(15, 23, 42, 0.06), 0 16px 28px rgba(2, 6, 23, 0.1);
         }
 
         .tabBtn:hover {
@@ -2284,31 +3134,12 @@ export default function Page() {
           transition: width 240ms ease;
         }
 
-        .quickRow {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 10px;
-          margin-top: 12px;
-        }
-
         .quickCard {
           border: 1px solid rgba(15, 23, 42, 0.1);
           border-radius: 18px;
           padding: 12px;
           background: rgba(255, 255, 255, 0.98);
           box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
-        }
-
-        .quickTitle {
-          font-weight: 1000;
-          margin-bottom: 6px;
-        }
-
-        .quickText {
-          color: var(--muted);
-          font-size: 13px;
-          line-height: 1.55;
-          font-weight: 700;
         }
 
         .issueWrap {
@@ -2391,7 +3222,7 @@ export default function Page() {
 
         /* Dashboard card */
         .dashCard {
-          border: 1px solid rgba(15, 23, 42, 0.10);
+          border: 1px solid rgba(15, 23, 42, 0.1);
           border-radius: 18px;
           padding: 12px;
           background: rgba(255, 255, 255, 0.98);
@@ -2453,7 +3284,50 @@ export default function Page() {
           overflow-wrap: anywhere;
         }
 
-        /* Responsive */
+        /* ===== Exercises UI ===== */
+        .rightTabs {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 12px;
+        }
+
+        .exSplit {
+          display: grid;
+          grid-template-columns: 340px 1fr;
+          gap: 12px;
+          margin-top: 12px;
+        }
+
+        .exList {
+          max-height: calc(100vh - 260px);
+          overflow: auto;
+          padding-right: 6px;
+        }
+
+        .exViewer {
+          min-height: 420px;
+        }
+
+        .exList::-webkit-scrollbar {
+          width: 10px;
+        }
+
+        .exList::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.18);
+          border-radius: 999px;
+          border: 3px solid rgba(255, 255, 255, 0.75);
+        }
+
+        @media (max-width: 980px) {
+          .exSplit {
+            grid-template-columns: 1fr;
+          }
+          .exList {
+            max-height: none;
+          }
+        }
+
         @media (max-width: 980px) {
           .proGrid {
             grid-template-columns: 1fr;
