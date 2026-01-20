@@ -226,6 +226,51 @@ function seededShuffle<T>(arr: T[], seedStr: string): T[] {
   return a;
 }
 
+function buildShuffledMcqView(
+  q: any,
+  correctRaw: string,
+  seedKey: string
+): { optionList: { k: string; v: string }[]; correct: string | null } {
+  const letters = ["A", "B", "C", "D"];
+
+  const opts = q?.options || {};
+  const base = letters
+    .filter((k) => typeof opts?.[k] === "string" && String(opts[k]).trim())
+    .map((k) => ({ key: k, text: String(opts[k]).trim() }));
+
+  if (!base.length) return { optionList: [], correct: null };
+
+  const correctUpper = String(correctRaw || "").trim().toUpperCase();
+
+  // Nếu correctRaw là A/B/C/D → dùng trực tiếp
+  const correctLetter = letters.includes(correctUpper) ? correctUpper : null;
+
+  // Nếu correctRaw là text → match theo text
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const correctTextNorm = correctLetter ? "" : norm(String(correctRaw || ""));
+
+  const choices = base.map((it) => ({
+    text: it.text,
+    isCorrect:
+      (correctLetter ? it.key === correctLetter : false) ||
+      (!!correctTextNorm && norm(it.text) === correctTextNorm),
+  }));
+
+  // Xáo trộn ổn định theo seedKey (không bị đổi mỗi lần render)
+  const shuffled = seededShuffle(choices, seedKey);
+
+  // Gán lại nhãn A/B/C/D theo thứ tự mới
+  const optionList = shuffled.slice(0, 4).map((c, idx) => ({
+    k: letters[idx],
+    v: c.text,
+  }));
+
+  const correctIdx = shuffled.findIndex((c) => c.isCorrect);
+  const correct = correctIdx >= 0 ? letters[correctIdx] : null;
+
+  return { optionList, correct };
+}
+
 function formatPhonesForTooltip(w: WordDisplay) {
   // @ts-ignore
   if (!w?.phones?.length) return "";
@@ -1452,7 +1497,7 @@ export default function Page() {
     return groupHistory(history, dashBucket, dashTask, dashMetric).slice(-24);
   }, [history, dashBucket, dashTask, dashMetric]);
 
-  function ExercisesPanel() {
+  const renderExercisesPanel = () => {
     return (
       <div>
         <div className="divider" style={{ marginTop: 14 }} />
@@ -1483,7 +1528,7 @@ export default function Page() {
                       New: <b>{ex.newContent?.title}</b>
                     </div>
 
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <button
                         className={`btn3d ${openExerciseId === ex.id ? "btnPrimary" : ""}`}
                         onClick={() => {
@@ -1522,12 +1567,13 @@ export default function Page() {
                         </button>
                       ) : null}
                       <button
+                        type="button"
                         className="btn3d btnTiny btnDanger"
                         title="Xóa bài tập"
                         onClick={() => deleteExerciseById(ex.id)}
                         style={{
-                          padding: "8px 10px",
-                          minWidth: 44,
+                          padding: "2px 2.5px",
+                          minWidth: 6,
                           justifyContent: "center",
                         }}
                       >
@@ -1613,17 +1659,19 @@ export default function Page() {
                                   (q: any, idx: number) => {
                                     const qid = String(q?.id || `q${idx + 1}`);
                                     const userAns = getExerciseAnswer(exId, qid);
-                                    const correct = String(q?.answer || openExercise.answerKey?.[qid] || "").trim();
+                                    const correctRaw = String(q?.answer ?? openExercise.answerKey?.[qid] ?? "").trim();
 
-                                    const opts = q?.options || {};
-                                    const optionList: { k: string; v: string }[] = ["A", "B", "C", "D"]
-                                      .filter((k) => opts?.[k])
-                                      .map((k) => ({ k, v: String(opts[k]) }));
+                                    // ✅ view đã xáo trộn options + tính lại correct letter theo mapping mới
+                                    const mcqView = buildShuffledMcqView(q, correctRaw, `mcq:${exId}:${qid}`);
+
+                                    const optionList = mcqView.optionList; // A/B/C/D sau khi shuffle
+                                    const correct = mcqView.correct;       // correct letter sau khi shuffle (sẽ không còn luôn "B")
 
                                     const isCorrect =
                                       userAns != null && correct
-                                        ? String(userAns).trim().toUpperCase() === correct.toUpperCase()
+                                        ? String(userAns).trim().toUpperCase() === String(correct).toUpperCase()
                                         : false;
+
 
                                     return (
                                       <div
@@ -1686,17 +1734,22 @@ export default function Page() {
                                 const itemId = String((gap as any).id || "gap1");
                                 const text = String((gap as any).text || "");
 
-                                const blanks = (text.match(/____/g) || []).length || 4;
-
-                                const bank: string[] = Array.isArray((gap as any).bank)
-                                  ? (gap as any).bank.map(String)
-                                  : [];
+                                const bank: string[] = Array.isArray((gap as any).bank) ? (gap as any).bank.map(String) : [];
 
                                 const correctArr: string[] = Array.isArray((gap as any).answers)
                                   ? (gap as any).answers.map(String)
-                                  : Array.isArray(openExercise?.answerKey?.[itemId])
+                                  : Array.isArray(openExercise.answerKey?.[itemId])
                                   ? openExercise.answerKey[itemId].map(String)
                                   : [];
+
+                                // ✅ Đếm blanks chuẩn:
+                                // - Nếu text có (1)(2)(3) → đếm theo số thứ tự
+                                // - Nếu text có ________ → đếm theo cụm "_" dài (>=3 dấu _ tính là 1 blank)
+                                const numberedCount = (text.match(/\(\d+\)/g) || []).length;
+                                const underscoreRuns = (text.match(/_{3,}/g) || []).length;
+
+                                // Lấy số lớn nhất để không bị thiếu ô
+                                const blanks = Math.max(numberedCount, underscoreRuns, correctArr.length, 4);
 
                                 const ans = getOrInitArrayAnswer(exId, itemId, blanks);
 
@@ -1704,7 +1757,7 @@ export default function Page() {
                                 const revealKey = `gap:${exId}:${itemId}`;
                                 const reveal = !!revealAnswerMap[revealKey];
 
-                                // ✅ xáo trộn word bank (nhưng vẫn “ổn định” theo bài)
+                                // ✅ xáo trộn word bank ổn định theo bài
                                 const bankShuffled = seededShuffle(bank, revealKey);
 
                                 const fillFirstEmpty = (w: string) => {
@@ -1715,23 +1768,24 @@ export default function Page() {
                                     setArrayAnswer(exId, itemId, next);
                                   }
                                 };
+
                                 return (
                                   <>
                                     <div className="muted" style={{ marginTop: 6 }}>
-                                      <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-                                        <button
-                                          className="btn3d btnTiny"
-                                          onClick={() =>
-                                            setRevealAnswerMap((prev) => ({
-                                              ...prev,
-                                              [revealKey]: !reveal, // ✅ CHÚ Ý: phải có dấu [ ]
-                                            }))
-                                          }
+                                      Bấm từ trong “Word bank” để điền nhanh, hoặc tự gõ.
+                                        <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+                                          <button
+                                            type="button"
+                                            className="btn3d btnTiny"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setRevealAnswerMap((prev) => ({ ...prev, [revealKey]: !reveal }));
+                                          }}
                                         >
                                           {reveal ? "Ẩn đáp án" : "Kiểm tra"}
                                         </button>
                                       </div>
-                                      Bấm từ trong “Word bank” để điền nhanh, hoặc tự gõ.
                                     </div>
 
                                     <div style={{ marginTop: 10, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{text}</div>
@@ -1739,7 +1793,16 @@ export default function Page() {
                                     {bankShuffled.length ? (
                                       <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
                                         {bankShuffled.map((w, i) => (
-                                          <button key={i} className="btn3d btnTiny" onClick={() => fillFirstEmpty(w)}>
+                                          <button
+                                            type="button"
+                                            key={`${revealKey}:w:${i}`}
+                                            className="btn3d btnTiny"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              fillFirstEmpty(w);
+                                            }}
+                                          >
                                             {w}
                                           </button>
                                         ))}
@@ -1750,18 +1813,17 @@ export default function Page() {
                                       {Array.from({ length: blanks }).map((_, i) => {
                                         const user = ans[i] || "";
                                         const correct = correctArr[i] || "";
-                                        const ok =
-                                          user && correct
-                                            ? user.trim().toLowerCase() === correct.trim().toLowerCase()
-                                            : false;
+                                        const ok = user && correct ? user.trim().toLowerCase() === correct.trim().toLowerCase() : false;
 
                                         return (
-                                          <div key={i} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                                          <div key={`${revealKey}:blank:${i}`} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
                                             <span className="badge">Ô trống {i + 1}</span>
 
                                             <input
                                               className="input"
                                               value={user}
+                                              onClick={(e) => e.stopPropagation()}
+                                              onFocus={(e) => e.stopPropagation()}
                                               onChange={(e) => {
                                                 const next = [...ans];
                                                 next[i] = e.target.value;
@@ -1791,6 +1853,7 @@ export default function Page() {
                                   </>
                                 );
                               })()}
+
                             </div>
                           ) : (
                             <div className="muted">Thiếu item type="gap_fill"</div>
@@ -2365,7 +2428,7 @@ export default function Page() {
 
       {err ? <div className="alertError">Lỗi: {err}</div> : null}
 
-      {rightTab === "exercises" ? <ExercisesPanel /> : scorePanel}
+      {rightTab === "exercises" ? renderExercisesPanel() : scorePanel}
     </div>
   );
 
