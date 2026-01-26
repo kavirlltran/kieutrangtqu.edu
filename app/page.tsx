@@ -504,6 +504,10 @@ export default function Page() {
     relevance: { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
   });
 
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
+  const [sendOk, setSendOk] = useState(false);
+
   const active = taskState[task];
   const result = active.result;
   const err = active.err;
@@ -1173,6 +1177,44 @@ export default function Page() {
       setBusy(false);
     }
   }
+  async function sendToTelegram() {
+    try {
+      setSendErr(null);
+      setSendOk(false);
+      setSending(true);
+
+      // lấy audioUrl mới (presigned)
+      const freshAudioUrl = await ensureFreshAudioUrl();
+
+      const payload = {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        task,
+        dialect,
+        result: result ?? null,
+        audioUrl: freshAudioUrl ?? null,
+
+        // ✅ gửi toàn bộ bài tập đã lưu + đáp án
+        exercises: exercises ?? [],
+        exerciseAnswers: exerciseAnswers ?? {},
+      };
+
+      const r = await fetch("/api/telegram-submit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(j?.error || "Send failed");
+
+      setSendOk(true);
+    } catch (e: any) {
+      setSendErr(e?.message || "Send failed");
+    } finally {
+      setSending(false);
+    }
+  }
 
   async function scoreUploadedFile() {
     resetRunState(task);
@@ -1658,18 +1700,18 @@ export default function Page() {
                                 {(Array.isArray((mcq as any).questions) ? (mcq as any).questions : []).map(
                                   (q: any, idx: number) => {
                                     const qid = String(q?.id || `q${idx + 1}`);
-                                    const userAns = getExerciseAnswer(exId, qid);
-                                    const correctRaw = String(q?.answer ?? openExercise.answerKey?.[qid] ?? "").trim();
+                                    const userAns = String(getExerciseAnswer(exId, qid) || "").trim().toUpperCase();
 
-                                    // ✅ view đã xáo trộn options + tính lại correct letter theo mapping mới
+                                    const correctRaw = String(q?.answer ?? openExercise.answerKey?.[qid] ?? "").trim();
                                     const mcqView = buildShuffledMcqView(q, correctRaw, `mcq:${exId}:${qid}`);
 
-                                    const optionList = mcqView.optionList; // A/B/C/D sau khi shuffle
-                                    const correct = mcqView.correct;       // correct letter sau khi shuffle (sẽ không còn luôn "B")
+                                    const optionList = mcqView.optionList;
+                                    const correct = mcqView.correct;
 
+                                    const locked = !!userAns; // ✅ đã chọn thì khóa luôn
                                     const isCorrect =
-                                      userAns != null && correct
-                                        ? String(userAns).trim().toUpperCase() === String(correct).toUpperCase()
+                                      locked && correct
+                                        ? String(userAns).trim().toUpperCase() === String(correct).trim().toUpperCase()
                                         : false;
 
 
@@ -1695,19 +1737,55 @@ export default function Page() {
                                         </div>
 
                                         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                                          {optionList.map((op) => (
-                                            <label key={op.k} className="row" style={{ gap: 10, cursor: "pointer" }}>
-                                              <input
-                                                type="radio"
-                                                name={`${exId}::${qid}`}
-                                                checked={String(userAns || "") === op.k}
-                                                onChange={() => setExerciseAnswer(exId, qid, op.k)}
-                                              />
-                                              <span>
-                                                <b>{op.k}.</b> {op.v}
-                                              </span>
-                                            </label>
-                                          ))}
+                                          {optionList.map((op) => {
+                                            const isSelected = userAns === op.k;
+
+                                            // ✅ đúng: màu xanh
+                                            const isCorrectOpt = locked && correct && op.k === correct;
+
+                                            // ✅ sai: lựa chọn của user màu đỏ
+                                            const isWrongSelected = locked && correct && isSelected && op.k !== correct;
+
+                                            const boxStyle: CSSProperties = isCorrectOpt
+                                              ? { border: "1px solid rgba(34,197,94,.40)", background: "rgba(34,197,94,.12)" }
+                                              : isWrongSelected
+                                              ? { border: "1px solid rgba(239,68,68,.40)", background: "rgba(239,68,68,.12)" }
+                                              : { border: "1px solid rgba(15,23,42,.08)", background: "transparent" };
+
+                                            const textStyle: CSSProperties = isCorrectOpt
+                                              ? { color: "rgb(21 128 61)", fontWeight: 900 }
+                                              : isWrongSelected
+                                              ? { color: "rgb(185 28 28)", fontWeight: 900 }
+                                              : {};
+
+                                            return (
+                                              <label
+                                                key={op.k}
+                                                className="row"
+                                                style={{
+                                                  gap: 10,
+                                                  cursor: locked ? "default" : "pointer",
+                                                  padding: 8,
+                                                  borderRadius: 12,
+                                                  ...boxStyle,
+                                                }}
+                                              >
+                                                <input
+                                                  type="radio"
+                                                  name={`${exId}::${qid}`}
+                                                  checked={isSelected}
+                                                  disabled={locked} // ✅ khóa sau khi chọn
+                                                  onChange={() => {
+                                                    if (locked) return;
+                                                    setExerciseAnswer(exId, qid, op.k);
+                                                  }}
+                                                />
+                                                <span style={textStyle}>
+                                                  <b>{op.k}.</b> {op.v}
+                                                </span>
+                                              </label>
+                                            );
+                                          })}
                                         </div>
                                       </div>
                                     );
@@ -1806,8 +1884,11 @@ export default function Page() {
                                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                                       {Array.from({ length: blanks }).map((_, i) => {
                                         const user = ans[i] || "";
-                                        const correct = correctArr[i] || "";
-                                        const ok = user && correct ? user.trim().toLowerCase() === correct.trim().toLowerCase() : false;
+                                        const correct = String(correctArr[i] || "");
+
+                                        const locked = !!String(user || "").trim(); // ✅ đã điền thì khóa
+                                        const ok = locked && correct ? user.trim().toLowerCase() === correct.trim().toLowerCase() : false;
+                                        const show = reveal; // ✅ chỉ hiện đáp án khi bấm "Kiểm tra"
 
                                         return (
                                           <div key={`${revealKey}:blank:${i}`} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -1816,9 +1897,11 @@ export default function Page() {
                                             <input
                                               className="input"
                                               value={user}
+                                              disabled={locked} // ✅ khóa
                                               onClick={(e) => e.stopPropagation()}
                                               onFocus={(e) => e.stopPropagation()}
                                               onChange={(e) => {
+                                                if (locked) return;
                                                 const next = [...ans];
                                                 next[i] = e.target.value;
                                                 setArrayAnswer(exId, itemId, next);
@@ -1826,19 +1909,21 @@ export default function Page() {
                                               placeholder="Điền đáp án..."
                                               style={{
                                                 maxWidth: 320,
-                                                borderColor:
-                                                  reveal && user
-                                                    ? ok
-                                                      ? "rgba(34,197,94,.35)"
-                                                      : "rgba(239,68,68,.25)"
-                                                    : undefined,
-                                              }}
+                                                borderColor: locked && show ? (ok ? "rgba(34,197,94,.40)" : "rgba(239,68,68,.40)") : undefined,
+                                                }}
                                             />
 
-                                            {reveal && correct ? (
-                                              <span className="muted">
-                                                Đáp án: <b>{correct}</b>
-                                              </span>
+                                            {show && locked && correct ? (
+                                              ok ? (
+                                                <span style={{ color: "rgb(21 128 61)", fontWeight: 1000 }}>✅ Đúng</span>
+                                              ) : (
+                                                <>
+                                                  <span style={{ color: "rgb(185 28 28)", fontWeight: 1000 }}>❌ Sai</span>
+                                                  <span style={{ color: "rgb(21 128 61)", fontWeight: 1000 }}>
+                                                    Đáp án đúng: <b>{correct}</b>
+                                                  </span>
+                                                </>
+                                              )
                                             ) : null}
                                           </div>
                                         );
@@ -2328,6 +2413,17 @@ export default function Page() {
                       <span className="badge">P: {h.pronunciation ?? "n/a"}</span>
                       <span className="badge">F: {h.fluency ?? "n/a"}</span>
                       {h.task === "relevance" ? <span className="badge">Rel: {h.relevanceClass ?? "n/a"}</span> : null}
+                      <button
+                        type="button"
+                        className="btn3d btnTiny btnPrimary"
+                        onClick={() => void sendToTelegram()}
+                        disabled={!result || !canStart() || busy || sending}
+                      >
+                        {sending ? "📤 Đang gửi..." : "📤 Gửi kết quả"}
+                      </button>
+
+                      {sendOk ? <span className="badge accentBadge">✅ Đã gửi</span> : null}
+
                     </div>
                   </div>
                 ))}
@@ -2413,6 +2509,18 @@ export default function Page() {
           >
             🧩 Bài tập
           </button>
+
+          <button
+            type="button"
+            className="btn3d btnTiny btnPrimary"
+            onClick={() => void sendToTelegram()}
+            disabled={!result || !canStart() || busy || sending}
+            title="Gửi toàn bộ kết quả + bài tập lên Telegram"
+          >
+            {sending ? "📤 Đang gửi..." : "📤 Gửi kết quả"}
+          </button>
+          {sendOk ? <span className="badge accentBadge">✅ Đã gửi</span> : null}
+
           {/* giữ lại badge cũ */}
           <span className="badge accentBadge">{task}</span>
           {typeof overall === "number" ? <span className="badge accentBadge">Overall: {overall.toFixed(1)}</span> : null}
@@ -2421,6 +2529,7 @@ export default function Page() {
       </div>
 
       {err ? <div className="alertError">Lỗi: {err}</div> : null}
+      {sendErr ? <div className="alertError">Gửi Telegram lỗi: {sendErr}</div> : null}
 
       {rightTab === "exercises" ? renderExercisesPanel() : scorePanel}
     </div>
