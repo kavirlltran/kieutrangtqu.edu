@@ -1709,12 +1709,6 @@ export default function Page() {
                                             </label>
                                           ))}
                                         </div>
-
-                                        {correct ? (
-                                          <div className="muted" style={{ marginTop: 10 }}>
-                                            Đáp án: <b>{correct}</b>
-                                          </div>
-                                        ) : null}
                                       </div>
                                     );
                                   }
