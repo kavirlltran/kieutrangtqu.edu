@@ -39,9 +39,10 @@ function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
 async function geminiCheckRelevance(
   transcript: string,
   context: string
-): Promise<{ relevant: boolean; reason: string } | null> {
+): Promise<{ relevant: boolean; reason: string; _debug?: any } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || !transcript || !context) return null;
+  if (!apiKey) return { relevant: true, reason: "NO_API_KEY", _debug: { error: "GEMINI_API_KEY not set" } } as any;
+  if (!transcript || !context) return null;
 
   const prompt = `You are a strict English teacher evaluating whether a student's spoken response actually answers the given question/topic. You must be VERY strict and precise.
 
@@ -75,22 +76,26 @@ or
       }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(could not read body)");
+      // Return debug info instead of null so we can see what went wrong
+      return { relevant: true, reason: `GEMINI_HTTP_${res.status}`, _debug: { status: res.status, error: errText.slice(0, 500) } } as any;
+    }
 
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     // extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
+    if (!jsonMatch) return { relevant: true, reason: "NO_JSON_MATCH", _debug: { rawText: text.slice(0, 300) } } as any;
 
     const parsed = JSON.parse(jsonMatch[0]);
     return {
       relevant: Boolean(parsed.relevant),
       reason: String(parsed.reason || ""),
     };
-  } catch {
-    return null; // graceful fallback
+  } catch (err: any) {
+    return { relevant: true, reason: "GEMINI_EXCEPTION", _debug: { error: err?.message || String(err) } } as any;
   }
 }
 
@@ -164,13 +169,16 @@ export async function POST(req: Request) {
 
     // ===== Gemini AI cross-check → ghi đè relevanceClass =====
     let finalRelevanceClass = relevanceClass;
+    let geminiDebug: any = null;
 
     if (transcript && relevanceContext) {
       const geminiResult = await geminiCheckRelevance(transcript, relevanceContext);
-      if (geminiResult) {
-        // Gemini ghi đè kết quả SpeechAce
+      geminiDebug = geminiResult;
+      if (geminiResult && !geminiResult._debug) {
+        // Gemini trả kết quả hợp lệ → ghi đè SpeechAce
         finalRelevanceClass = geminiResult.relevant ? "TRUE" : "FALSE";
       }
+      // Nếu có _debug → Gemini lỗi, giữ nguyên SpeechAce
     }
 
     return Response.json({
@@ -187,6 +195,7 @@ export async function POST(req: Request) {
       dialect,
       audioKey,
       relevanceContext,
+      geminiDebug,
       speechace,
     });
 
