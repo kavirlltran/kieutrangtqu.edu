@@ -2507,6 +2507,20 @@ export default function Page() {
               <div className="muted" style={{ marginTop: 10 }}>
                 Tip: nhắc lại keyword của đề ở mở bài, trả lời 2–3 ý chính, tránh kể lan man.
               </div>
+
+              {/* Transcript */}
+              {transcript && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>🎙 Transcript (SpeechAce nghe được)</div>
+                  <div style={{
+                    padding: 12, borderRadius: 12,
+                    background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)",
+                    lineHeight: 1.7, fontSize: 14,
+                  }}>
+                    {transcript}
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
 
