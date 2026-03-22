@@ -131,10 +131,33 @@ function buildScoreSection(taskName: string, result: any, audioUrl: string | nul
       ? sp?.text_score?.transcript ?? sp?.transcript ?? ""
       : sp?.speech_score?.transcript ?? sp?.speech_score?.transcription ?? sp?.transcript ?? "";
 
+  // Word score list (reading)
+  const wordList = taskName === "reading"
+    ? (Array.isArray(sp?.text_score?.word_score_list) ? sp.text_score.word_score_list : [])
+    : [];
+  const weakest = wordList
+    .filter((w: any) => Number.isFinite(w?.quality_score))
+    .sort((a: any, b: any) => a.quality_score - b.quality_score)
+    .slice(0, 10);
+
+  // Reference text
+  const refText = sp?.text_score?.text ?? result?.text ?? "";
+
   // Relevance extras
   const relevanceObj = (sp?.speech_score?.relevance ?? sp?.relevance ?? null) as any;
   const relevanceClass = result?.relevanceClass ?? relevanceObj?.class ?? null;
   const relevanceScore = result?.relevanceScore ?? relevanceObj?.score ?? null;
+  const relevanceContext = result?.relevanceContext ?? "";
+
+  // Gemini cross-check
+  const geminiRelevance = result?.geminiRelevance ?? null;
+  const geminiReason = result?.geminiReason ?? "";
+
+  // IELTS, CEFR, PTE, TOEIC
+  const ielts = sp?.speech_score?.ielts_score ?? sp?.text_score?.ielts_score ?? null;
+  const cefr = sp?.speech_score?.cefr_score ?? sp?.text_score?.cefr_score ?? null;
+  const pte = sp?.speech_score?.pte_score ?? sp?.text_score?.pte_score ?? null;
+  const toeic = sp?.speech_score?.toeic_score ?? sp?.text_score?.toeic_score ?? null;
 
   // ── TXT lines ──
   const txtLines: string[] = [];
@@ -145,30 +168,83 @@ function buildScoreSection(taskName: string, result: any, audioUrl: string | nul
   txtLines.push(`Grammar: ${gra ?? "n/a"}`);
   txtLines.push(`Coherence: ${coh ?? "n/a"}`);
   txtLines.push(`Vocab: ${voc ?? "n/a"}`);
+  if (ielts) txtLines.push(`IELTS: ${JSON.stringify(ielts)}`);
+  if (cefr) txtLines.push(`CEFR: ${JSON.stringify(cefr)}`);
   if (taskName === "relevance") {
     txtLines.push(`Relevance Class: ${relevanceClass ?? "n/a"}`);
     txtLines.push(`Relevance Score: ${relevanceScore ?? "n/a"}`);
+    if (relevanceContext) txtLines.push(`Context: ${relevanceContext}`);
+    if (geminiRelevance != null) txtLines.push(`Gemini: ${geminiRelevance ? "TRUE" : "FALSE"} – ${geminiReason}`);
+  }
+  if (weakest.length) {
+    txtLines.push(`Weakest words: ${weakest.map((w: any) => `${w.word}(${w.quality_score})`).join(", ")}`);
   }
   if (audioUrl) txtLines.push(`Audio URL: ${audioUrl}`);
+  if (refText) txtLines.push(`Reference text: ${refText}`);
   if (transcript) txtLines.push(`Transcript: ${transcript}`);
   txtLines.push("");
 
   // ── HTML block ──
   let html = `<h2>${label}</h2>
 <table>
-<tr><th>Overall</th><td>${csvEscape(overall)}</td></tr>
+<tr><th>Overall</th><td><b style="font-size:1.2em;color:#3b82f6">${csvEscape(overall ?? "n/a")}</b></td></tr>
 <tr><th>Pronunciation</th><td>${csvEscape(pron)}</td></tr>
 <tr><th>Fluency</th><td>${csvEscape(flu)}</td></tr>
 <tr><th>Grammar</th><td>${csvEscape(gra)}</td></tr>
 <tr><th>Coherence</th><td>${csvEscape(coh)}</td></tr>
 <tr><th>Vocab</th><td>${csvEscape(voc)}</td></tr>`;
+
+  // IELTS / CEFR / PTE / TOEIC
+  if (ielts) html += `<tr><th>IELTS</th><td>${csvEscape(typeof ielts === "object" ? JSON.stringify(ielts) : ielts)}</td></tr>`;
+  if (cefr) html += `<tr><th>CEFR</th><td>${csvEscape(typeof cefr === "object" ? JSON.stringify(cefr) : cefr)}</td></tr>`;
+  if (pte) html += `<tr><th>PTE</th><td>${csvEscape(typeof pte === "object" ? JSON.stringify(pte) : pte)}</td></tr>`;
+  if (toeic) html += `<tr><th>TOEIC</th><td>${csvEscape(typeof toeic === "object" ? JSON.stringify(toeic) : toeic)}</td></tr>`;
+
+  // Relevance
   if (taskName === "relevance") {
-    html += `<tr><th>Relevance Class</th><td>${csvEscape(relevanceClass)}</td></tr>`;
+    html += `<tr><th>Relevance</th><td><span style="color:${String(relevanceClass).toUpperCase() === "TRUE" ? "green" : "red"};font-weight:bold">${csvEscape(relevanceClass ?? "n/a")}</span></td></tr>`;
     html += `<tr><th>Relevance Score</th><td>${csvEscape(relevanceScore)}</td></tr>`;
+    if (relevanceContext) html += `<tr><th>Context</th><td>${csvEscape(relevanceContext)}</td></tr>`;
+    if (geminiRelevance != null) {
+      html += `<tr><th>🤖 Gemini AI</th><td><span style="color:${geminiRelevance ? "green" : "red"};font-weight:bold">${geminiRelevance ? "TRUE" : "FALSE"}</span> – ${csvEscape(geminiReason)}</td></tr>`;
+    }
   }
+
   html += `</table>`;
-  if (audioUrl) html += `<p><b>Audio:</b> <a href="${csvEscape(audioUrl)}">Tải audio</a></p>`;
-  if (transcript) html += `<h4>Transcript</h4><pre>${csvEscape(transcript)}</pre>`;
+
+  // Audio link
+  if (audioUrl) html += `<p><b>🔊 Audio:</b> <a href="${csvEscape(audioUrl)}">Tải audio</a></p>`;
+
+  // Reference text (reading)
+  if (refText) html += `<h4>📖 Reference Text</h4><pre style="background:#f0f7ff;border:1px solid #93c5fd;padding:10px;border-radius:8px">${csvEscape(refText)}</pre>`;
+
+  // Transcript
+  if (transcript) html += `<h4>🎙 Transcript</h4><pre style="background:#f0fdf4;border:1px solid #86efac;padding:10px;border-radius:8px">${csvEscape(transcript)}</pre>`;
+
+  // Weakest words table (reading)
+  if (weakest.length) {
+    html += `<h4>⚠️ Weakest Words</h4>`;
+    html += `<table><tr><th>#</th><th>Word</th><th>Quality</th><th>Phone count</th></tr>`;
+    weakest.forEach((w: any, i: number) => {
+      const color = w.quality_score < 30 ? "#ef4444" : w.quality_score < 60 ? "#f59e0b" : "#22c55e";
+      html += `<tr><td>${i + 1}</td><td><b>${csvEscape(w.word)}</b></td><td style="color:${color};font-weight:bold">${w.quality_score}</td><td>${w.phone_score_list?.length ?? "—"}</td></tr>`;
+    });
+    html += `</table>`;
+  }
+
+  // All words table (top 30)
+  if (wordList.length > 0) {
+    const allWords = wordList.filter((w: any) => w?.word).slice(0, 40);
+    html += `<details><summary><b>📊 All word scores (${wordList.length} words)</b></summary>`;
+    html += `<table><tr><th>Word</th><th>Quality</th></tr>`;
+    allWords.forEach((w: any) => {
+      const q = w.quality_score ?? "—";
+      const color = typeof q === "number" ? (q < 30 ? "#ef4444" : q < 60 ? "#f59e0b" : "#22c55e") : "#888";
+      html += `<tr><td>${csvEscape(w.word)}</td><td style="color:${color};font-weight:bold">${q}</td></tr>`;
+    });
+    if (wordList.length > 40) html += `<tr><td colspan="2"><em>... và ${wordList.length - 40} từ nữa</em></td></tr>`;
+    html += `</table></details>`;
+  }
 
   return { txtLines, html };
 }
