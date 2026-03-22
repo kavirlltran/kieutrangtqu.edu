@@ -35,10 +35,63 @@ function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
   return ab;
 }
 
+// ===== Gemini AI cross-check relevance =====
+async function geminiCheckRelevance(
+  transcript: string,
+  context: string
+): Promise<{ relevant: boolean; reason: string } | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !transcript || !context) return null;
+
+  const prompt = `You are evaluating whether a student's spoken response matches the given topic.
+
+Topic/Question: "${context}"
+
+Student's transcript: "${transcript}"
+
+Rules:
+- TRUE if the student talks about the topic described in the question/context
+- FALSE if the student talks about a completely different topic
+- Be strict: "favorite food" and "favorite subject" are DIFFERENT topics
+- Only answer in this exact JSON format, nothing else:
+{"relevant": true, "reason": "brief explanation"}
+or
+{"relevant": false, "reason": "brief explanation"}`;
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 200 },
+      }),
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      relevant: Boolean(parsed.relevant),
+      reason: String(parsed.reason || ""),
+    };
+  } catch {
+    return null; // graceful fallback
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const speechaceKey = must("SPEECHACE_KEY");
-    const endpoint = must("SPEECHACE_SPEECH_ENDPOINT"); // SpeechAce Speech v9 endpoint
+    const endpoint = must("SPEECHACE_SPEECH_ENDPOINT");
 
     const body = await req.json();
 
@@ -100,8 +153,20 @@ export async function POST(req: Request) {
     const cefr = speechace?.speech_score?.cefr_score ?? null;
 
     const issues = Array.isArray(speechace?.speech_score?.score_issue_list)
-  ? speechace.speech_score.score_issue_list
-  : [];
+      ? speechace.speech_score.score_issue_list
+      : [];
+
+    // ===== Gemini AI cross-check =====
+    let geminiRelevance: boolean | null = null;
+    let geminiReason: string | null = null;
+
+    if (transcript && relevanceContext) {
+      const geminiResult = await geminiCheckRelevance(transcript, relevanceContext);
+      if (geminiResult) {
+        geminiRelevance = geminiResult.relevant;
+        geminiReason = geminiResult.reason;
+      }
+    }
 
     return Response.json({
       ok: true,
@@ -117,6 +182,9 @@ export async function POST(req: Request) {
       dialect,
       audioKey,
       relevanceContext,
+      // Gemini cross-check results
+      geminiRelevance,
+      geminiReason,
       speechace,
     });
 
