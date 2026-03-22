@@ -2410,6 +2410,31 @@ export default function Page() {
             <Metric label="Vocab" value={scoreObj?.vocab} />
           </div>
 
+          {/* RELEVANCE FALSE WARNING */}
+          {task === "relevance" && String(relevanceClass).toUpperCase() === "FALSE" && (
+            <div style={{
+              marginTop: 12,
+              padding: "10px 14px",
+              borderRadius: 12,
+              background: "rgba(239,68,68,.10)",
+              border: "1px solid rgba(239,68,68,.30)",
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+            }}>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+              <div style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}>
+                <b style={{ color: "#f87171" }}>Lạc đề — điểm phát âm không được tính</b>
+                <br />
+                Điểm trên phản ánh <b>chất lượng phát âm tiếng Anh</b> (pronunciation, fluency…), nhưng bài nói <b>không bám đúng chủ đề</b> nên không có giá trị thực tế.
+                <br />
+                <span style={{ color: "rgba(255,255,255,.5)", fontSize: 12 }}>
+                  Tip: nhắc lại keyword của đề, trả lời đúng câu hỏi được hỏi.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* EXTRA EXAMS */}
           {(ieltsObj || pteObj || toeicObj || cefrObj) ? (
             <>
