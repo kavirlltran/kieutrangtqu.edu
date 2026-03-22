@@ -43,20 +43,26 @@ async function geminiCheckRelevance(
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || !transcript || !context) return null;
 
-  const prompt = `You are evaluating whether a student's spoken response matches the given topic.
+  const prompt = `You are a strict English teacher evaluating whether a student's spoken response actually answers the given question/topic. You must be VERY strict and precise.
 
 Topic/Question: "${context}"
 
 Student's transcript: "${transcript}"
 
-Rules:
-- TRUE if the student talks about the topic described in the question/context
-- FALSE if the student talks about a completely different topic
-- Be strict: "favorite food" and "favorite subject" are DIFFERENT topics
-- Only answer in this exact JSON format, nothing else:
-{"relevant": true, "reason": "brief explanation"}
+STRICT RULES:
+1. The response must DIRECTLY address the EXACT topic in the question
+2. Similar-sounding but DIFFERENT words mean DIFFERENT topics:
+   - "homework" (bài tập về nhà) ≠ "housework" (việc nhà)
+   - "food" ≠ "mood", "reading" ≠ "leading", etc.
+3. If the question asks about "homework" but the student talks about "housework/cleaning/cooking at home", that is FALSE
+4. If the question asks about "favorite food" but the student talks about "favorite subject", that is FALSE
+5. Pay attention to the MAIN CONTENT, not just individual matching keywords
+6. The response must demonstrate genuine understanding of the topic
+
+Answer ONLY in this exact JSON format:
+{"relevant": true, "reason": "brief explanation in English"}
 or
-{"relevant": false, "reason": "brief explanation"}`;
+{"relevant": false, "reason": "brief explanation in English"}`;
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
