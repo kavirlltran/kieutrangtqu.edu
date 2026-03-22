@@ -2847,30 +2847,49 @@ export default function Page() {
               disabled={!fullName.trim() || !email.trim() || busy || recording}
               style={{ width: "100%" }}
             >
-              {userInfoLocked ? "✅ Đã lưu" : "💾 Lưu thông tin"}
+              💾 Lưu thông tin
             </button>
             {/* Danh sách người dùng đã lưu */}
             {userProfiles.length > 0 && (
               <div>
-                <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Chọn người dùng đã lưu:</div>
-                <div style={{ display: "grid", gap: 4 }}>
-                  {userProfiles.map((p) => (
-                    <button
-                      key={p.id}
-                      className="btn3d btnTiny"
-                      onClick={() => switchToUser(p.id)}
-                      disabled={busy || recording}
-                      style={{
-                        width: "100%", textAlign: "left", padding: "8px 10px",
-                        background: p.id === activeUserId ? "rgba(59,130,246,.15)" : "rgba(255,255,255,.03)",
-                        border: p.id === activeUserId ? "1px solid rgba(59,130,246,.3)" : "1px solid rgba(255,255,255,.06)",
-                        borderRadius: 10, cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, fontSize: 12 }}>👤 {p.fullName}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>{p.email}</div>
-                    </button>
-                  ))}
+                <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Người dùng đã lưu:</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <select
+                    className="select"
+                    value={activeUserId}
+                    onChange={(e) => e.target.value && switchToUser(e.target.value)}
+                    disabled={busy || recording}
+                    style={{ flex: 1, fontSize: 12 }}
+                  >
+                    <option value="">— Chọn —</option>
+                    {userProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn3d btnTiny"
+                    title="Xóa người dùng đang chọn"
+                    disabled={!activeUserId || busy || recording}
+                    onClick={() => {
+                      if (!activeUserId) return;
+                      if (!confirm(`Xóa "${userProfiles.find(p => p.id === activeUserId)?.fullName}"?`)) return;
+                      const newProfiles = userProfiles.filter(p => p.id !== activeUserId);
+                      saveUserProfiles(newProfiles);
+                      setUserProfiles(newProfiles);
+                      // xóa data
+                      try { localStorage.removeItem(userExKey(activeUserId)); } catch {}
+                      try { localStorage.removeItem(userAnsKey(activeUserId)); } catch {}
+                      try { localStorage.removeItem(userHistKey(activeUserId)); } catch {}
+                      setActiveUserId("");
+                      saveActiveUserId("");
+                      setUserInfoLocked(false);
+                      setFullName("");
+                      setEmail("");
+                    }}
+                    style={{ padding: "6px 10px", fontSize: 12 }}
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
             )}
