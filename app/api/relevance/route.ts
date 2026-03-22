@@ -72,7 +72,7 @@ or
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 200 },
+        generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
       }),
     });
 
