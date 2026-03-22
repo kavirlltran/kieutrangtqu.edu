@@ -357,18 +357,72 @@ export async function POST(req: Request) {
           ? [{ task: payload.task, result: payload.result, audioUrl: payload.audioUrl ?? null }]
           : [];
 
-    // ✅ Telegram summary message ghi rõ từng phần
-    const completedParts = taskResultsList
-      .map((t) => TASK_LABELS[t.task] || t.task)
-      .join(", ");
+    // ✅ Telegram summary message ghi rõ từng phần + chi tiết điểm
+    const completedParts = taskResultsList.map((t) => TASK_LABELS[t.task] || t.task).join(", ");
+    const summaryLines: string[] = [];
+    summaryLines.push(`📌 Bài nộp mới`);
+    summaryLines.push(`👤 ${payload.fullName || "—"}`);
+    summaryLines.push(`📧 ${payload.email || "—"}`);
+    summaryLines.push(`🗣 Dialect: ${payload.dialect}`);
+    summaryLines.push(`📝 Các phần đã làm: ${completedParts || "—"}`);
+    summaryLines.push(`🗂 Exercises: ${(payload.exercises || []).length}`);
+    summaryLines.push(`⏱ ${new Date().toLocaleString("vi-VN")}`);
 
-    await tgSendMessage(
-      token,
-      chatId,
-      `📌 Bài nộp mới\n👤 ${payload.fullName || "—"}\n📧 ${payload.email || "—"}\n🗣 Dialect: ${
-        payload.dialect
-      }\n📝 Các phần đã làm: ${completedParts || "—"}\n🗂 Exercises: ${(payload.exercises || []).length}\n⏱ ${new Date().toLocaleString("vi-VN")}`
-    );
+    // Chi tiết điểm từng phần
+    for (const tr of taskResultsList) {
+      const label = TASK_LABELS[tr.task] || tr.task.toUpperCase();
+      const sp = tr.result?.speechace;
+
+      const scoreObj =
+        tr.task === "reading"
+          ? sp?.text_score?.speechace_score ?? sp?.speechace_score ?? null
+          : sp?.speech_score?.speechace_score ?? sp?.speechace_score ?? null;
+
+      const overall =
+        tr.task === "reading"
+          ? sp?.text_score?.speechace_score?.overall ?? tr.result?.overall ?? null
+          : sp?.speech_score?.speechace_score?.overall ?? tr.result?.overall ?? null;
+
+      summaryLines.push(``);
+      summaryLines.push(`━━━ ${label} ━━━`);
+      summaryLines.push(`Overall: ${overall ?? "n/a"}`);
+      if (scoreObj?.pronunciation != null) summaryLines.push(`Pronunciation: ${scoreObj.pronunciation}`);
+      if (scoreObj?.fluency != null) summaryLines.push(`Fluency: ${scoreObj.fluency}`);
+      if (scoreObj?.grammar != null) summaryLines.push(`Grammar: ${scoreObj.grammar}`);
+      if (scoreObj?.coherence != null) summaryLines.push(`Coherence: ${scoreObj.coherence}`);
+      if (scoreObj?.vocab != null) summaryLines.push(`Vocab: ${scoreObj.vocab}`);
+
+      // Reading: weakest words
+      if (tr.task === "reading") {
+        const wordList = Array.isArray(sp?.text_score?.word_score_list) ? sp.text_score.word_score_list : [];
+        const weakest = wordList
+          .filter((w: any) => Number.isFinite(w?.quality_score))
+          .sort((a: any, b: any) => a.quality_score - b.quality_score)
+          .slice(0, 8);
+        if (weakest.length) {
+          summaryLines.push(`Weakest words: ${weakest.map((w: any) => `${w.word}(${w.quality_score})`).join(", ")}`);
+        }
+        const text = sp?.text_score?.text ?? tr.result?.text ?? "";
+        if (text) summaryLines.push(`Text: ${String(text).slice(0, 200)}`);
+      }
+
+      // Open-ended / Relevance: transcript
+      if (tr.task !== "reading") {
+        const transcript = sp?.speech_score?.transcript ?? tr.result?.transcript ?? "";
+        if (transcript) summaryLines.push(`Transcript: ${String(transcript).slice(0, 200)}`);
+      }
+
+      // Relevance: class + gemini
+      if (tr.task === "relevance") {
+        const relClass = tr.result?.relevanceClass ?? sp?.speech_score?.relevance?.class ?? null;
+        summaryLines.push(`Relevance: ${relClass ?? "n/a"}`);
+        if (tr.result?.geminiRelevance != null) {
+          summaryLines.push(`🤖 Gemini: ${tr.result.geminiRelevance ? "TRUE" : "FALSE"} – ${tr.result.geminiReason || ""}`);
+        }
+      }
+    }
+
+    await tgSendMessage(token, chatId, summaryLines.join("\n"));
 
     const rep = buildReports(payload);
     await tgSendDocument(token, chatId, new Blob([rep.html], { type: "text/html" }), "report.html", "Report (HTML)");
