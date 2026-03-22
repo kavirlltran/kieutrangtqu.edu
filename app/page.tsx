@@ -106,6 +106,18 @@ function saveActiveUserId(id: string) {
 function userExKey(userId: string) { return `speechace_ex_${userId}`; }
 function userAnsKey(userId: string) { return `speechace_ans_${userId}`; }
 function userHistKey(userId: string) { return `speechace_hist_${userId}`; }
+function userResultsKey(userId: string) { return `speechace_results_${userId}`; }
+
+// Save/load task results (result JSON only — không lưu File object hay audioUrl vì sẽ expire)
+type PersistedResults = Partial<Record<Task, any>>;
+function loadUserResults(userId: string): PersistedResults {
+  if (!userId || typeof window === "undefined") return {};
+  try { const r = localStorage.getItem(userResultsKey(userId)); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+function saveUserResults(userId: string, results: PersistedResults) {
+  if (!userId || typeof window === "undefined") return;
+  try { localStorage.setItem(userResultsKey(userId), JSON.stringify(results)); } catch {}
+}
 
 function loadUserExercises(userId: string): ExerciseSet[] {
   if (!userId || typeof window === "undefined") return [];
@@ -763,6 +775,20 @@ export default function Page() {
         }
         const ans = loadUserAnswers(savedId);
         if (Object.keys(ans).length) setExerciseAnswers(ans);
+
+        // ✅ khôi phục kết quả chấm điểm đã lưu
+        const savedResults = loadUserResults(savedId);
+        if (Object.keys(savedResults).length) {
+          setTaskState((prev) => {
+            const next = { ...prev };
+            for (const t of ["reading", "open-ended", "relevance"] as Task[]) {
+              if (savedResults[t]) {
+                next[t] = { ...prev[t], result: savedResults[t], audioUrl: null, audioUrlAt: null };
+              }
+            }
+            return next;
+          });
+        }
       }
     }
   }, []);
@@ -779,6 +805,17 @@ export default function Page() {
     saveUserAnswers(activeUserId, exerciseAnswers);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exerciseAnswers, activeUserId]);
+
+  // ✅ Auto-save task results per user
+  useEffect(() => {
+    if (!activeUserId) return;
+    const toSave: PersistedResults = {};
+    for (const t of ["reading", "open-ended", "relevance"] as Task[]) {
+      if (taskState[t].result) toSave[t] = taskState[t].result;
+    }
+    saveUserResults(activeUserId, toSave);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskState, activeUserId]);
 
   // ===== Save current user profile & lock session =====
   function saveCurrentUser() {
@@ -818,6 +855,12 @@ export default function Page() {
     if (activeUserId) {
       saveUserExercises(activeUserId, exercises);
       saveUserAnswers(activeUserId, exerciseAnswers);
+      // save results
+      const curResults: PersistedResults = {};
+      for (const t of ["reading", "open-ended", "relevance"] as Task[]) {
+        if (taskState[t].result) curResults[t] = taskState[t].result;
+      }
+      saveUserResults(activeUserId, curResults);
     }
 
     const profiles = loadUserProfiles();
@@ -847,6 +890,20 @@ export default function Page() {
 
     const ans = loadUserAnswers(userId);
     setExerciseAnswers(ans);
+
+    // ✅ restore task results của user mới
+    const savedResults = loadUserResults(userId);
+    setTaskState((prev) => {
+      const next = {
+        reading: { ...prev.reading, result: null, audioUrl: null, audioUrlAt: null },
+        "open-ended": { ...prev["open-ended"], result: null, audioUrl: null, audioUrlAt: null },
+        relevance: { ...prev.relevance, result: null, audioUrl: null, audioUrlAt: null },
+      };
+      for (const t of ["reading", "open-ended", "relevance"] as Task[]) {
+        if (savedResults[t]) next[t] = { ...next[t], result: savedResults[t] };
+      }
+      return next;
+    });
 
     setOpenExerciseId(exs[0]?.id || "");
   }
@@ -2919,6 +2976,7 @@ export default function Page() {
                       try { localStorage.removeItem(userExKey(activeUserId)); } catch {}
                       try { localStorage.removeItem(userAnsKey(activeUserId)); } catch {}
                       try { localStorage.removeItem(userHistKey(activeUserId)); } catch {}
+                      try { localStorage.removeItem(userResultsKey(activeUserId)); } catch {}
                       setActiveUserId("");
                       saveActiveUserId("");
                       setUserInfoLocked(false);
@@ -3233,11 +3291,12 @@ export default function Page() {
 
             {/* ── Danh sách các phần đã chấm ── */}
             <div style={{ fontWeight: 900, marginBottom: 8 }}>📝 Kết quả chấm điểm</div>
-            {(["reading", "open-ended"] as Task[]).map((t) => {
+            {(["reading", "open-ended", "relevance"] as Task[]).map((t) => {
+              const taskLabel = t === "reading" ? "📘 Reading" : t === "open-ended" ? "🗣️ Open-ended" : "🎯 Relevance";
               const st = taskState[t];
               if (!st.result) return (
                 <div key={t} style={{ marginBottom: 8, padding: 10, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)", opacity: 0.5 }}>
-                  <b>{t === "reading" ? "📘 Reading" : "🗣️ Open-ended"}</b>
+                  <b>{taskLabel}</b>
                   <span className="muted" style={{ marginLeft: 8 }}>— Chưa làm</span>
                 </div>
               );
@@ -3250,11 +3309,15 @@ export default function Page() {
                 ? sp?.text_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? st.result?.overall ?? null
                 : sp?.speech_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? st.result?.overall ?? null;
 
+              const relClass = t === "relevance" ? (st.result?.relevanceClass ?? null) : null;
               return (
                 <div key={t} style={{ marginBottom: 8, padding: 12, borderRadius: 14, background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.15)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <b>{t === "reading" ? "📘 Reading" : "🗣️ Open-ended"}</b>
-                    <span className="badge accentBadge">Overall: {ov != null ? Number(ov).toFixed(1) : "n/a"}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                    <b>{taskLabel}</b>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {relClass && <span className={`badge ${String(relClass).toUpperCase() === "TRUE" ? "badgeSuccess" : "badgeDanger"}`}>{relClass}</span>}
+                      <span className="badge accentBadge">Overall: {ov != null ? Number(ov).toFixed(1) : "n/a"}</span>
+                    </div>
                   </div>
                   <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
                     P: {scoreObj?.pronunciation ?? "n/a"} · F: {scoreObj?.fluency ?? "n/a"} · G: {scoreObj?.grammar ?? "n/a"} · C: {scoreObj?.coherence ?? "n/a"} · V: {scoreObj?.vocab ?? "n/a"}
