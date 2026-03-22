@@ -72,6 +72,15 @@ const EXERCISE_MAX = 50;
 const USER_PROFILES_KEY = "speechace_user_profiles_v1";
 const ACTIVE_USER_KEY = "speechace_active_user_v1";
 
+// Danh sách lớp — chỉnh ở đây khi thêm/xóa lớp
+const CLASS_LIST = [
+  "10A1",
+  "10A2",
+  "10A3",
+  "11B1",
+  "11B2",
+];
+
 type UserProfile = {
   id: string; // email-based
   fullName: string;
@@ -581,6 +590,7 @@ export default function Page() {
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [sendOk, setSendOk] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [classCode, setClassCode] = useState(""); // lớp được chọn khi nộp bài
 
   const active = taskState[task];
   const result = active.result;
@@ -1472,6 +1482,7 @@ export default function Page() {
         fullName: fullName.trim(),
         email: email.trim(),
         dialect,
+        classCode: classCode.trim(), // ✅ lớp học
         // ✅ gửi toàn bộ kết quả của tất cả các phần đã làm
         taskResults,
         // tương thích ngược
@@ -3289,6 +3300,30 @@ export default function Page() {
               <div><b>🗣 Dialect:</b> {dialect}</div>
             </div>
 
+            {/* ── Chọn lớp (bắt buộc) ── */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                🏫 Lớp học <span style={{ color: "#f87171", fontWeight: 400, fontSize: 12 }}>* bắt buộc</span>
+              </div>
+              <select
+                className="select"
+                value={classCode}
+                onChange={(e) => setClassCode(e.target.value)}
+                disabled={sending}
+                style={{ width: "100%", fontSize: 15, fontWeight: classCode ? 700 : 400 }}
+              >
+                <option value="">— Chọn lớp của bạn —</option>
+                {CLASS_LIST.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              {!classCode && (
+                <div style={{ color: "#f87171", fontSize: 12, marginTop: 4 }}>
+                  ⚠️ Vui lòng chọn lớp trước khi gửi bài
+                </div>
+              )}
+            </div>
+
             {/* ── Danh sách các phần đã chấm ── */}
             <div style={{ fontWeight: 900, marginBottom: 8 }}>📝 Kết quả chấm điểm</div>
             {(["reading", "open-ended", "relevance"] as Task[]).map((t) => {
@@ -3373,7 +3408,8 @@ export default function Page() {
                   onClick={async () => {
                     await sendToTelegram();
                   }}
-                  disabled={sending}
+                  disabled={sending || !classCode.trim()}
+                  title={!classCode.trim() ? "Vui lòng chọn lớp trước" : ""}
                   style={{ minWidth: 140 }}
                 >
                   {sending ? "📤 Đang gửi..." : "📤 Xác nhận gửi"}

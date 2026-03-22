@@ -10,6 +10,7 @@ type Payload = {
   fullName: string;
   email: string;
   dialect: string;
+  classCode?: string; // ✅ lớp học
 
   // ✅ MỚI: mảng kết quả của TẤT CẢ các phần đã làm
   taskResults?: TaskResultEntry[];
@@ -28,6 +29,23 @@ const TASK_LABELS: Record<string, string> = {
   "open-ended": "💬 OPEN-ENDED",
   relevance: "🎯 RELEVANCE",
 };
+
+// ===== CLASS CONFIG =====
+// Vercel env var CLASS_CONFIG dạng JSON:
+// [{"code":"10A1","chatId":"-1001234567890"},{"code":"10A2","chatId":"-1009876543210"},...]
+// Nếu không có CLASS_CONFIG hoặc không tìm thấy lớp, fallback về TELEGRAM_CHAT_ID
+function resolveClassChatId(classCode: string | undefined, defaultChatId: string): string {
+  if (!classCode) return defaultChatId;
+  try {
+    const raw = process.env.CLASS_CONFIG || "";
+    if (!raw) return defaultChatId;
+    const list: { code: string; chatId: string }[] = JSON.parse(raw);
+    const found = list.find((item) => item.code.toLowerCase() === classCode.toLowerCase());
+    return found?.chatId || defaultChatId;
+  } catch {
+    return defaultChatId;
+  }
+}
 
 function seededShuffle<T>(arr: T[], seedStr: string): T[] {
   const a = [...arr];
@@ -425,6 +443,10 @@ export async function POST(req: Request) {
 
     const payload = (await req.json()) as Payload;
 
+    // ===== Xác định chat ID theo lớp =====
+    const classChatId = resolveClassChatId(payload.classCode, chatId);
+    const adminChatId = process.env.ADMIN_CHAT_ID || ""; // admin nhận bản sao (tuỳ chọn)
+
     // ✅ Xác định danh sách task results
     const taskResultsList: TaskResultEntry[] =
       Array.isArray(payload.taskResults) && payload.taskResults.length > 0
@@ -433,10 +455,11 @@ export async function POST(req: Request) {
           ? [{ task: payload.task, result: payload.result, audioUrl: payload.audioUrl ?? null }]
           : [];
 
-    // ✅ Telegram summary message ghi rõ từng phần + chi tiết điểm
+    // ✅ Telegram summary message
     const completedParts = taskResultsList.map((t) => TASK_LABELS[t.task] || t.task).join(", ");
     const summaryLines: string[] = [];
     summaryLines.push(`📌 Bài nộp mới`);
+    summaryLines.push(`🎫 Lớp: ${payload.classCode || "(chưa chọn)"}`);
     summaryLines.push(`👤 ${payload.fullName || "—"}`);
     summaryLines.push(`📧 ${payload.email || "—"}`);
     summaryLines.push(`🗣 Dialect: ${payload.dialect}`);
@@ -498,12 +521,16 @@ export async function POST(req: Request) {
       }
     }
 
-    await tgSendMessage(token, chatId, summaryLines.join("\n"));
+    await tgSendMessage(token, classChatId, summaryLines.join("\n"));
+    // CC cho admin nếu có ADMIN_CHAT_ID (và khác classChatId)
+    if (adminChatId && adminChatId !== classChatId) {
+      await tgSendMessage(token, adminChatId, summaryLines.join("\n")).catch(() => {});
+    }
 
     const rep = buildReports(payload);
-    await tgSendDocument(token, chatId, new Blob([rep.html], { type: "text/html" }), "report.html", "Report (HTML)");
-    await tgSendDocument(token, chatId, new Blob([rep.csv], { type: "text/csv" }), "report.csv", "Report (CSV)");
-    await tgSendDocument(token, chatId, new Blob([rep.txt], { type: "text/plain" }), "report.txt", "Report (TXT)");
+    await tgSendDocument(token, classChatId, new Blob([rep.html], { type: "text/html" }), "report.html", "Report (HTML)");
+    await tgSendDocument(token, classChatId, new Blob([rep.csv], { type: "text/csv" }), "report.csv", "Report (CSV)");
+    await tgSendDocument(token, classChatId, new Blob([rep.txt], { type: "text/plain" }), "report.txt", "Report (TXT)");
 
     // ✅ gửi audio file cho TẤT CẢ các task (kèm nhãn phần)
     for (const tr of taskResultsList) {
@@ -517,7 +544,7 @@ export async function POST(req: Request) {
           const label = tr.task.replace(/[^a-z0-9-]/gi, "_");
           await tgSendDocument(
             token,
-            chatId,
+            classChatId,
             new Blob([ab], { type: ct }),
             `audio_${label}.${ext}`,
             `🔊 Audio – ${TASK_LABELS[tr.task] || tr.task}`
