@@ -2808,7 +2808,6 @@ export default function Page() {
           >
             <span className="sidebarItemIcon">🗣️</span> Open-ended
           </button>
-          {/* ẨN RELEVANCE — bỏ comment để bật lại
           <button
             className={`sidebarItem ${task === "relevance" ? "active" : ""}`}
             onClick={() => { setHover(null); setClickPop(null); setTask("relevance"); }}
@@ -2816,7 +2815,6 @@ export default function Page() {
           >
             <span className="sidebarItemIcon">🎯</span> Relevance
           </button>
-          */}
 
           <div className="sidebarDivider" />
 
