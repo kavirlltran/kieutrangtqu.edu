@@ -507,6 +507,7 @@ export default function Page() {
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [sendOk, setSendOk] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
 
   const active = taskState[task];
   const result = active.result;
@@ -2448,10 +2449,10 @@ export default function Page() {
                       <button
                         type="button"
                         className="btn3d btnTiny btnPrimary"
-                        onClick={() => void sendToTelegram()}
+                        onClick={() => setShowSubmitModal(true)}
                         disabled={!hasAnyResult || !canStart() || busy || sending}
                       >
-                        {sending ? "📤 Đang gửi..." : "📤 Gửi kết quả"}
+                        {sending ? "📤 Đang gửi..." : "📤 Gửi bài tập"}
                       </button>
 
                       {sendOk ? <span className="badge accentBadge">✅ Đã gửi</span> : null}
@@ -2546,11 +2547,11 @@ export default function Page() {
           <button
             type="button"
             className="btn3d btnTiny btnPrimary"
-            onClick={() => void sendToTelegram()}
+            onClick={() => setShowSubmitModal(true)}
             disabled={!hasAnyResult || !canStart() || busy || sending}
-            title="Gửi toàn bộ kết quả + bài tập lên Telegram"
+            title="Gửi toàn bộ kết quả + bài tập"
           >
-            {sending ? "📤 Đang gửi..." : "📤 Gửi kết quả"}
+            {sending ? "📤 Đang gửi..." : "📤 Gửi bài tập"}
           </button>
           {sendOk ? <span className="badge accentBadge">✅ Đã gửi</span> : null}
 
@@ -2562,7 +2563,7 @@ export default function Page() {
       </div>
 
       {err ? <div className="alertError">Lỗi: {err}</div> : null}
-      {sendErr ? <div className="alertError">Gửi Telegram lỗi: {sendErr}</div> : null}
+      {sendErr ? <div className="alertError">Gửi lỗi: {sendErr}</div> : null}
 
       {rightTab === "exercises" ? renderExercisesPanel() : scorePanel}
     </div>
@@ -2906,6 +2907,129 @@ export default function Page() {
           </div>
         </div>
       </div>
+
+      {/* ===== SUBMIT CONFIRMATION MODAL ===== */}
+      {showSubmitModal && mounted && createPortal(
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 10000,
+            background: "rgba(0,0,0,.65)", backdropFilter: "blur(6px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onClick={() => !sending && setShowSubmitModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 92vw)", maxHeight: "80vh", overflow: "auto",
+              background: "var(--card-s, #1e293b)", borderRadius: 20,
+              border: "1px solid var(--border, rgba(255,255,255,.08))",
+              boxShadow: "0 24px 60px rgba(0,0,0,.55)", padding: 24,
+            }}
+          >
+            <div style={{ fontWeight: 1000, fontSize: 18, marginBottom: 16 }}>
+              📋 Xác nhận gửi bài tập
+            </div>
+
+            {/* ── Thông tin học viên ── */}
+            <div style={{ marginBottom: 14, padding: 12, borderRadius: 14, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)" }}>
+              <div><b>👤 Họ tên:</b> {fullName || "—"}</div>
+              <div><b>📧 Email:</b> {email || "—"}</div>
+              <div><b>🗣 Dialect:</b> {dialect}</div>
+            </div>
+
+            {/* ── Danh sách các phần đã chấm ── */}
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>📝 Kết quả chấm điểm</div>
+            {(["reading", "open-ended"] as Task[]).map((t) => {
+              const st = taskState[t];
+              if (!st.result) return (
+                <div key={t} style={{ marginBottom: 8, padding: 10, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)", opacity: 0.5 }}>
+                  <b>{t === "reading" ? "📘 Reading" : "🗣️ Open-ended"}</b>
+                  <span className="muted" style={{ marginLeft: 8 }}>— Chưa làm</span>
+                </div>
+              );
+
+              const sp = st.result?.speechace;
+              const scoreObj = t === "reading"
+                ? sp?.text_score?.speechace_score ?? sp?.speechace_score ?? null
+                : sp?.speech_score?.speechace_score ?? sp?.speechace_score ?? null;
+              const ov = t === "reading"
+                ? sp?.text_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? st.result?.overall ?? null
+                : sp?.speech_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? st.result?.overall ?? null;
+
+              return (
+                <div key={t} style={{ marginBottom: 8, padding: 12, borderRadius: 14, background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.15)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <b>{t === "reading" ? "📘 Reading" : "🗣️ Open-ended"}</b>
+                    <span className="badge accentBadge">Overall: {ov != null ? Number(ov).toFixed(1) : "n/a"}</span>
+                  </div>
+                  <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                    P: {scoreObj?.pronunciation ?? "n/a"} · F: {scoreObj?.fluency ?? "n/a"} · G: {scoreObj?.grammar ?? "n/a"} · C: {scoreObj?.coherence ?? "n/a"} · V: {scoreObj?.vocab ?? "n/a"}
+                  </div>
+                  <div className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+                    🎧 Audio: {st.result?.audioKey ? "✅ Có file ghi âm" : "❌ Không có"}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* ── Bài tập ── */}
+            <div style={{ fontWeight: 900, marginTop: 14, marginBottom: 8 }}>🧩 Bài tập ({exercises.length})</div>
+            {exercises.length === 0 ? (
+              <div className="muted" style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
+                Chưa có bài tập nào
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 6 }}>
+                {exercises.map((ex) => {
+                  const taskLabel = ex.task === "reading" ? "📘 Reading" : ex.task === "open-ended" ? "🗣️ Open-ended" : ex.task;
+                  return (
+                    <div key={ex.id} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", fontSize: 13 }}>
+                      <b>{ex.title || "Exercise"}</b>
+                      <span className="muted" style={{ marginLeft: 8 }}>{taskLabel} · {ex.level}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Buttons ── */}
+            {sendOk && !sending ? (
+              <div style={{ marginTop: 18, textAlign: "center" }}>
+                <span className="badge accentBadge" style={{ fontSize: 15, padding: "8px 16px" }}>✅ Đã gửi thành công!</span>
+                <div style={{ marginTop: 12 }}>
+                  <button className="btn3d btnTiny" onClick={() => { setShowSubmitModal(false); setSendOk(false); }}>
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 18, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  className="btn3d btnTiny"
+                  onClick={() => setShowSubmitModal(false)}
+                  disabled={sending}
+                >
+                  ❌ Hủy
+                </button>
+                <button
+                  className="btn3d btnTiny btnPrimary"
+                  onClick={async () => {
+                    await sendToTelegram();
+                  }}
+                  disabled={sending}
+                  style={{ minWidth: 140 }}
+                >
+                  {sending ? "📤 Đang gửi..." : "📤 Xác nhận gửi"}
+                </button>
+              </div>
+            )}
+
+            {sendErr ? <div className="alertError" style={{ marginTop: 10 }}>Lỗi: {sendErr}</div> : null}
+          </div>
+        </div>,
+        document.body
+      )}
 
       {renderPopups}
     </div>
