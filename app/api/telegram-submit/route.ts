@@ -1,15 +1,32 @@
 export const runtime = "nodejs";
 
+type TaskResultEntry = {
+  task: string;
+  result: any | null;
+  audioUrl: string | null;
+};
+
 type Payload = {
   fullName: string;
   email: string;
-  task: string;
   dialect: string;
-  result: any | null;
-  audioUrl: string | null;
+
+  // ✅ MỚI: mảng kết quả của TẤT CẢ các phần đã làm
+  taskResults?: TaskResultEntry[];
+
+  // tương thích ngược (dùng nếu taskResults không có)
+  task?: string;
+  result?: any | null;
+  audioUrl?: string | null;
 
   exercises: any[]; // ✅ tất cả bài đã lưu
   exerciseAnswers: Record<string, Record<string, any>>; // exId -> itemId/qid -> answer
+};
+
+const TASK_LABELS: Record<string, string> = {
+  reading: "📚 READING",
+  "open-ended": "💬 OPEN-ENDED",
+  relevance: "🎯 RELEVANCE",
 };
 
 function seededShuffle<T>(arr: T[], seedStr: string): T[] {
@@ -88,18 +105,20 @@ async function tgSendDocument(token: string, chatId: string, blob: Blob, filenam
   if (!r.ok) throw new Error(j?.description || "Telegram sendDocument failed");
 }
 
-function buildReports(p: Payload) {
-  const sp = p.result?.speechace;
+/* ──── Build score section cho 1 task ──── */
+function buildScoreSection(taskName: string, result: any, audioUrl: string | null) {
+  const label = TASK_LABELS[taskName] || taskName.toUpperCase();
+  const sp = result?.speechace;
 
   const scoreObj =
-    p.task === "reading"
+    taskName === "reading"
       ? sp?.text_score?.speechace_score ?? sp?.speechace_score ?? null
       : sp?.speech_score?.speechace_score ?? sp?.speechace_score ?? null;
 
   const overall =
-    p.task === "reading"
-      ? sp?.text_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? p.result?.overall ?? null
-      : sp?.speech_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? p.result?.overall ?? null;
+    taskName === "reading"
+      ? sp?.text_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? result?.overall ?? null
+      : sp?.speech_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? result?.overall ?? null;
 
   const pron = scoreObj?.pronunciation ?? null;
   const flu = scoreObj?.fluency ?? null;
@@ -108,41 +127,100 @@ function buildReports(p: Payload) {
   const voc = scoreObj?.vocab ?? null;
 
   const transcript =
-    p.task === "reading"
+    taskName === "reading"
       ? sp?.text_score?.transcript ?? sp?.transcript ?? ""
       : sp?.speech_score?.transcript ?? sp?.speech_score?.transcription ?? sp?.transcript ?? "";
+
+  // Relevance extras
+  const relevanceObj = (sp?.speech_score?.relevance ?? sp?.relevance ?? null) as any;
+  const relevanceClass = result?.relevanceClass ?? relevanceObj?.class ?? null;
+  const relevanceScore = result?.relevanceScore ?? relevanceObj?.score ?? null;
+
+  // ── TXT lines ──
+  const txtLines: string[] = [];
+  txtLines.push(`===== ${label} =====`);
+  txtLines.push(`Overall: ${overall ?? "n/a"}`);
+  txtLines.push(`Pronunciation: ${pron ?? "n/a"}`);
+  txtLines.push(`Fluency: ${flu ?? "n/a"}`);
+  txtLines.push(`Grammar: ${gra ?? "n/a"}`);
+  txtLines.push(`Coherence: ${coh ?? "n/a"}`);
+  txtLines.push(`Vocab: ${voc ?? "n/a"}`);
+  if (taskName === "relevance") {
+    txtLines.push(`Relevance Class: ${relevanceClass ?? "n/a"}`);
+    txtLines.push(`Relevance Score: ${relevanceScore ?? "n/a"}`);
+  }
+  if (audioUrl) txtLines.push(`Audio URL: ${audioUrl}`);
+  if (transcript) txtLines.push(`Transcript: ${transcript}`);
+  txtLines.push("");
+
+  // ── HTML block ──
+  let html = `<h2>${label}</h2>
+<table>
+<tr><th>Overall</th><td>${csvEscape(overall)}</td></tr>
+<tr><th>Pronunciation</th><td>${csvEscape(pron)}</td></tr>
+<tr><th>Fluency</th><td>${csvEscape(flu)}</td></tr>
+<tr><th>Grammar</th><td>${csvEscape(gra)}</td></tr>
+<tr><th>Coherence</th><td>${csvEscape(coh)}</td></tr>
+<tr><th>Vocab</th><td>${csvEscape(voc)}</td></tr>`;
+  if (taskName === "relevance") {
+    html += `<tr><th>Relevance Class</th><td>${csvEscape(relevanceClass)}</td></tr>`;
+    html += `<tr><th>Relevance Score</th><td>${csvEscape(relevanceScore)}</td></tr>`;
+  }
+  html += `</table>`;
+  if (audioUrl) html += `<p><b>Audio:</b> <a href="${csvEscape(audioUrl)}">Tải audio</a></p>`;
+  if (transcript) html += `<h4>Transcript</h4><pre>${csvEscape(transcript)}</pre>`;
+
+  return { txtLines, html };
+}
+
+function buildReports(p: Payload) {
+  // ✅ Xác định danh sách task results
+  const taskResultsList: TaskResultEntry[] =
+    Array.isArray(p.taskResults) && p.taskResults.length > 0
+      ? p.taskResults
+      : p.task && p.result
+        ? [{ task: p.task, result: p.result, audioUrl: p.audioUrl ?? null }]
+        : [];
 
   // ===== TXT =====
   const lines: string[] = [];
   lines.push("===== THÔNG TIN HỌC VIÊN =====");
   lines.push(`Họ tên: ${p.fullName || "—"}`);
   lines.push(`Email: ${p.email || "—"}`);
-  lines.push(`Task: ${p.task || "—"}`);
   lines.push(`Dialect: ${p.dialect || "—"}`);
+  lines.push(`Số phần đã làm: ${taskResultsList.length}`);
+  lines.push(`Các phần: ${taskResultsList.map((t) => t.task).join(", ") || "—"}`);
   lines.push("");
-  lines.push("===== ĐIỂM SPEECHACE =====");
-  lines.push(`Overall: ${overall ?? "n/a"}`);
-  lines.push(`Pronunciation: ${pron ?? "n/a"}`);
-  lines.push(`Fluency: ${flu ?? "n/a"}`);
-  lines.push(`Grammar: ${gra ?? "n/a"}`);
-  lines.push(`Coherence: ${coh ?? "n/a"}`);
-  lines.push(`Vocab: ${voc ?? "n/a"}`);
-  lines.push("");
-  if (p.audioUrl) lines.push(`Audio URL: ${p.audioUrl}\n`);
-  if (transcript) lines.push(`===== TRANSCRIPT =====\n${transcript}\n`);
 
-  // ===== CSV (Excel) =====
+  // ===== HTML head =====
+  const htmlScoreBlocks: string[] = [];
+
+  // ===== CSV =====
   const rows: string[][] = [];
   rows.push(["type", "exerciseId", "title", "questionId", "prompt", "user", "correct", "status"]);
 
-  // ===== HTML =====
+  // ── Build score sections cho TẤT CẢ task ──
+  for (const tr of taskResultsList) {
+    const section = buildScoreSection(tr.task, tr.result, tr.audioUrl);
+    lines.push(...section.txtLines);
+    htmlScoreBlocks.push(section.html);
+  }
+
+  if (taskResultsList.length === 0) {
+    lines.push("(Chưa có kết quả chấm điểm nào)");
+    lines.push("");
+    htmlScoreBlocks.push("<p><em>Chưa có kết quả chấm điểm nào</em></p>");
+  }
+
+  // ===== Exercise blocks =====
   const exHtmlBlocks: string[] = [];
 
   for (const ex of Array.isArray(p.exercises) ? p.exercises : []) {
     const exId = String(ex?.id || "");
     const ansMap = p.exerciseAnswers?.[exId] || {};
+    const exTaskLabel = TASK_LABELS[ex?.task] || (ex?.task || "").toUpperCase();
 
-    exHtmlBlocks.push(`<h3>${csvEscape(ex?.title || "Exercise")}</h3>`);
+    exHtmlBlocks.push(`<h3>${csvEscape(ex?.title || "Exercise")} <small>(${exTaskLabel})</small></h3>`);
     exHtmlBlocks.push(
       `<div><b>Task:</b> ${csvEscape(ex?.task || "")} &nbsp; <b>Level:</b> ${csvEscape(ex?.level || "")}</div>`
     );
@@ -218,7 +296,7 @@ function buildReports(p: Payload) {
     }
 
     exHtmlBlocks.push(`<hr/>`);
-    lines.push(`===== EXERCISE: ${ex?.title || exId} =====`);
+    lines.push(`===== EXERCISE: ${ex?.title || exId} (${exTaskLabel}) =====`);
     lines.push(`Task/Level: ${ex?.task || ""} / ${ex?.level || ""}`);
     lines.push(`(Xem chi tiết trong report.html & report.csv)`);
     lines.push("");
@@ -232,36 +310,28 @@ function buildReports(p: Payload) {
 <title>Student Report</title>
 <style>
 body{font-family:Arial, sans-serif; padding:16px; line-height:1.5}
-h2{margin:18px 0 8px}
+h2{margin:18px 0 8px; border-bottom:2px solid #3b82f6; padding-bottom:6px}
+h3{margin:14px 0 6px}
 table{border-collapse:collapse; width:100%; margin:8px 0}
 td,th{border:1px solid #ddd; padding:8px; vertical-align:top}
 th{background:#f5f5f5; text-align:left}
 pre{white-space:pre-wrap; background:#fafafa; border:1px solid #eee; padding:10px}
 hr{border:0;border-top:1px solid #eee;margin:18px 0}
+small{color:#888;font-weight:normal}
 </style></head>
 <body>
-<h2>Thông tin học viên</h2>
+<h2>📋 Thông tin học viên</h2>
 <table>
 <tr><th>Họ tên</th><td>${csvEscape(p.fullName)}</td></tr>
 <tr><th>Email</th><td>${csvEscape(p.email)}</td></tr>
-<tr><th>Task</th><td>${csvEscape(p.task)}</td></tr>
 <tr><th>Dialect</th><td>${csvEscape(p.dialect)}</td></tr>
+<tr><th>Số phần đã làm</th><td>${taskResultsList.length}</td></tr>
+<tr><th>Các phần</th><td>${taskResultsList.map((t) => TASK_LABELS[t.task] || t.task).join(", ") || "—"}</td></tr>
 </table>
 
-<h2>Điểm</h2>
-<table>
-<tr><th>Overall</th><td>${csvEscape(overall)}</td></tr>
-<tr><th>Pronunciation</th><td>${csvEscape(pron)}</td></tr>
-<tr><th>Fluency</th><td>${csvEscape(flu)}</td></tr>
-<tr><th>Grammar</th><td>${csvEscape(gra)}</td></tr>
-<tr><th>Coherence</th><td>${csvEscape(coh)}</td></tr>
-<tr><th>Vocab</th><td>${csvEscape(voc)}</td></tr>
-</table>
+${htmlScoreBlocks.join("\n<hr/>\n")}
 
-${p.audioUrl ? `<h2>Audio</h2><pre>${csvEscape(p.audioUrl)}</pre>` : ""}
-${transcript ? `<h2>Transcript</h2><pre>${csvEscape(transcript)}</pre>` : ""}
-
-<h2>Bài tập (tất cả đã lưu)</h2>
+<h2>📝 Bài tập (tất cả đã lưu)</h2>
 ${exHtmlBlocks.join("\n")}
 
 </body></html>`;
@@ -279,12 +349,25 @@ export async function POST(req: Request) {
 
     const payload = (await req.json()) as Payload;
 
+    // ✅ Xác định danh sách task results
+    const taskResultsList: TaskResultEntry[] =
+      Array.isArray(payload.taskResults) && payload.taskResults.length > 0
+        ? payload.taskResults
+        : payload.task && payload.result
+          ? [{ task: payload.task, result: payload.result, audioUrl: payload.audioUrl ?? null }]
+          : [];
+
+    // ✅ Telegram summary message ghi rõ từng phần
+    const completedParts = taskResultsList
+      .map((t) => TASK_LABELS[t.task] || t.task)
+      .join(", ");
+
     await tgSendMessage(
       token,
       chatId,
-      `📌 Bài nộp mới\n👤 ${payload.fullName || "—"}\n📧 ${payload.email || "—"}\n🧾 ${payload.task} / ${
+      `📌 Bài nộp mới\n👤 ${payload.fullName || "—"}\n📧 ${payload.email || "—"}\n🗣 Dialect: ${
         payload.dialect
-      }\n🗂 Exercises: ${(payload.exercises || []).length}\n⏱ ${new Date().toLocaleString("vi-VN")}`
+      }\n📝 Các phần đã làm: ${completedParts || "—"}\n🗂 Exercises: ${(payload.exercises || []).length}\n⏱ ${new Date().toLocaleString("vi-VN")}`
     );
 
     const rep = buildReports(payload);
@@ -292,15 +375,23 @@ export async function POST(req: Request) {
     await tgSendDocument(token, chatId, new Blob([rep.csv], { type: "text/csv" }), "report.csv", "Report (CSV)");
     await tgSendDocument(token, chatId, new Blob([rep.txt], { type: "text/plain" }), "report.txt", "Report (TXT)");
 
-    // gửi audio file (nếu lấy được)
-    if (payload.audioUrl) {
+    // ✅ gửi audio file cho TẤT CẢ các task (kèm nhãn phần)
+    for (const tr of taskResultsList) {
+      if (!tr.audioUrl) continue;
       try {
-        const r = await fetch(payload.audioUrl);
+        const r = await fetch(tr.audioUrl);
         if (r.ok) {
           const ct = r.headers.get("content-type") || "audio/webm";
           const ab = await r.arrayBuffer();
           const ext = ct.includes("wav") ? "wav" : ct.includes("mpeg") ? "mp3" : ct.includes("mp4") ? "mp4" : "webm";
-          await tgSendDocument(token, chatId, new Blob([ab], { type: ct }), `audio.${ext}`, "Audio");
+          const label = tr.task.replace(/[^a-z0-9-]/gi, "_");
+          await tgSendDocument(
+            token,
+            chatId,
+            new Blob([ab], { type: ct }),
+            `audio_${label}.${ext}`,
+            `🔊 Audio – ${TASK_LABELS[tr.task] || tr.task}`
+          );
         }
       } catch {
         // ignore

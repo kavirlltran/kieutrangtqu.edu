@@ -77,8 +77,17 @@ export async function startWavRecorder(): Promise<WavRecorderHandle> {
     chunks.push(new Float32Array(input));
   };
 
+  // Bug B6 Fix: Connect to a silent GainNode (gain=0) instead of destination.
+  // Previously `processor.connect(audioCtx.destination)` caused the user's mic
+  // audio to be played back through their speakers (echo). ScriptProcessor still
+  // fires onaudioprocess events even without a destination connection on some
+  // browsers, but connecting to a muted gain node ensures maximum compatibility.
+  const silentGain = audioCtx.createGain();
+  silentGain.gain.value = 0;
+  silentGain.connect(audioCtx.destination);
+
   source.connect(processor);
-  processor.connect(audioCtx.destination);
+  processor.connect(silentGain);
 
   const stop = async (): Promise<WavRecording> => {
     processor.disconnect();
@@ -90,7 +99,7 @@ export async function startWavRecorder(): Promise<WavRecorderHandle> {
     // Close to release mic indicator on iOS
     try {
       await audioCtx.close();
-    } catch {}
+    } catch { }
 
     const mono = mergeBuffers(chunks);
     const blob = encodeWav(mono, sampleRate);

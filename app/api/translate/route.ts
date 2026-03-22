@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-function clampText(s: string, max = 80) {
+function clampText(s: string, max = 200) { // B7 fix: was 80 chars, too short for phrases
   const t = (s || "").trim();
   return t.length > max ? t.slice(0, max) : t;
 }

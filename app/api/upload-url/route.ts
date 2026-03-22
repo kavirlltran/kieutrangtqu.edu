@@ -5,9 +5,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Bucket, r2Client } from "@/lib/r2";
 
 function randomKey(ext: string) {
-  const rand = Math.random().toString(16).slice(2);
+  // B2 fix: use crypto.randomUUID() instead of Math.random() for proper entropy
+  const uuid = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   const ts = Date.now();
-  return `uploads/${ts}_${rand}.${ext || "bin"}`;
+  return `uploads/${ts}_${uuid}.${ext || "bin"}`;
 }
 
 function extFromContentType(ct: string): string {

@@ -84,7 +84,7 @@ function saveExercises(items: ExerciseSet[]) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(EXERCISE_STORAGE_KEY, JSON.stringify(items.slice(0, EXERCISE_MAX)));
-  } catch {}
+  } catch { }
 }
 
 function pushExercise(item: ExerciseSet) {
@@ -112,7 +112,7 @@ function saveHistory(items: HistoryEntry[]) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items.slice(0, HISTORY_MAX)));
-  } catch {}
+  } catch { }
 }
 
 function pushHistory(entry: HistoryEntry) {
@@ -349,10 +349,10 @@ function buildWordDisplays(usedText: string, speechace: any): WordDisplay[] {
       typeof picked?.quality_score === "number"
         ? picked.quality_score
         : typeof picked?.quality === "number"
-        ? picked.quality
-        : typeof picked?.score === "number"
-        ? picked.score
-        : null;
+          ? picked.quality
+          : typeof picked?.score === "number"
+            ? picked.score
+            : null;
 
     const phonesRaw = Array.isArray(picked?.phone_score_list) ? picked.phone_score_list : [];
     const phones = phonesRaw.map((p: any) => ({
@@ -361,8 +361,8 @@ function buildWordDisplays(usedText: string, speechace: any): WordDisplay[] {
         typeof p?.quality_score === "number"
           ? p.quality_score
           : typeof p?.quality === "number"
-          ? p.quality
-          : null,
+            ? p.quality
+            : null,
       soundMostLike: p?.sound_most_like ? String(p.sound_most_like) : undefined,
       extent: Array.isArray(p?.extent) ? p.extent : null,
     }));
@@ -542,7 +542,7 @@ export default function Page() {
     void exerciseVersion;
     return loadExercises();
   }, [exerciseVersion]);
-  
+
   function deleteExerciseById(exIdToDelete: string) {
     if (typeof window === "undefined") return;
 
@@ -582,7 +582,7 @@ export default function Page() {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") setExerciseAnswers(parsed);
-    } catch {}
+    } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -590,7 +590,7 @@ export default function Page() {
     if (typeof window === "undefined") return;
     try {
       localStorage.setItem(EX_ANS_KEY, JSON.stringify(exerciseAnswers));
-    } catch {}
+    } catch { }
   }, [exerciseAnswers]);
 
   function getExerciseAnswer(exId: string, itemId: string) {
@@ -683,7 +683,7 @@ export default function Page() {
   useEffect(() => {
     try {
       if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch {}
+    } catch { }
     setRightTab("score");
     updateTaskState({ uploadedFile: null }, task);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -735,7 +735,7 @@ export default function Page() {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) setPassages([...DEFAULT_PASSAGES, ...parsed]);
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -744,7 +744,7 @@ export default function Page() {
       try {
         const synth: any = (window as any).speechSynthesis;
         synth?.cancel?.();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -770,7 +770,7 @@ export default function Page() {
     try {
       const synth: any = (window as any).speechSynthesis;
       synth?.cancel?.();
-    } catch {}
+    } catch { }
     setTtsSpeaking(false);
   }
 
@@ -784,7 +784,7 @@ export default function Page() {
 
     try {
       audioRef.current?.pause?.();
-    } catch {}
+    } catch { }
     stopTts();
   }
 
@@ -822,7 +822,7 @@ export default function Page() {
         try {
           audioRef.current.src = url;
           audioRef.current.load();
-        } catch {}
+        } catch { }
       }
 
       return url;
@@ -843,7 +843,7 @@ export default function Page() {
 
     try {
       a.pause();
-    } catch {}
+    } catch { }
 
     if (!a.src) {
       const url = await ensureFreshAudioUrl();
@@ -855,11 +855,11 @@ export default function Page() {
 
       try {
         a.currentTime = Math.max(0, startSec);
-      } catch {}
+      } catch { }
 
       segmentRef.current = { endSec, token };
 
-      void a.play().catch(() => {});
+      void a.play().catch(() => { });
 
       const ms = Math.max(80, Math.round((endSec - startSec) * 1000) + 60);
       segmentTimerRef.current = setTimeout(() => {
@@ -868,7 +868,7 @@ export default function Page() {
 
         try {
           a.pause();
-        } catch {}
+        } catch { }
         segmentRef.current = null;
         segmentTimerRef.current = null;
       }, ms);
@@ -906,7 +906,7 @@ export default function Page() {
 
     try {
       audioRef.current?.pause?.();
-    } catch {}
+    } catch { }
     stopSegmentTimer();
     segmentRef.current = null;
 
@@ -1126,17 +1126,17 @@ export default function Page() {
         const overallNum =
           t === "reading"
             ? safeNum(
-                sp?.text_score?.speechace_score?.overall ??
-                  sp?.text_score?.overall ??
-                  scoreObj?.overall ??
-                  nextResult?.overall
-              )
+              sp?.text_score?.speechace_score?.overall ??
+              sp?.text_score?.overall ??
+              scoreObj?.overall ??
+              nextResult?.overall
+            )
             : safeNum(
-                sp?.speech_score?.speechace_score?.overall ??
-                  sp?.speech_score?.overall ??
-                  scoreObj?.overall ??
-                  nextResult?.overall
-              );
+              sp?.speech_score?.speechace_score?.overall ??
+              sp?.speech_score?.overall ??
+              scoreObj?.overall ??
+              nextResult?.overall
+            );
 
         const relObj = sp?.speech_score?.relevance ?? sp?.relevance ?? null;
         const relExtra =
@@ -1170,7 +1170,7 @@ export default function Page() {
 
         pushHistory(entry);
         setHistoryVersion((v) => v + 1);
-      } catch {}
+      } catch { }
     } catch (e: any) {
       updateTaskState({ err: e?.message || "Error" }, t);
     } finally {
@@ -1183,16 +1183,44 @@ export default function Page() {
       setSendOk(false);
       setSending(true);
 
-      // lấy audioUrl mới (presigned)
-      const freshAudioUrl = await ensureFreshAudioUrl();
+      // ✅ Thu thập kết quả từ TẤT CẢ các task (reading, open-ended, relevance)
+      const allTasks: Task[] = ["reading", "open-ended", "relevance"];
+      const taskResults: { task: string; result: any; audioUrl: string | null }[] = [];
+
+      for (const t of allTasks) {
+        const st = taskState[t];
+        if (!st.result) continue; // bỏ qua task chưa có kết quả
+
+        // Lấy presigned audio URL cho task này
+        let freshUrl: string | null = null;
+        const audioKey = st.result?.audioKey;
+        if (audioKey) {
+          try {
+            const r = await fetch(`/api/audio-url?key=${encodeURIComponent(audioKey)}`);
+            const j = await r.json();
+            freshUrl = j?.url || null;
+          } catch {
+            freshUrl = st.audioUrl || null;
+          }
+        }
+
+        taskResults.push({
+          task: t,
+          result: st.result,
+          audioUrl: freshUrl,
+        });
+      }
 
       const payload = {
         fullName: fullName.trim(),
         email: email.trim(),
-        task,
         dialect,
+        // ✅ gửi toàn bộ kết quả của tất cả các phần đã làm
+        taskResults,
+        // tương thích ngược
+        task,
         result: result ?? null,
-        audioUrl: freshAudioUrl ?? null,
+        audioUrl: taskResults.find((x) => x.task === task)?.audioUrl ?? null,
 
         // ✅ gửi toàn bộ bài tập đã lưu + đáp án
         exercises: exercises ?? [],
@@ -1310,7 +1338,7 @@ export default function Page() {
       if (a.currentTime >= seg.endSec) {
         try {
           a.pause();
-        } catch {}
+        } catch { }
         segmentRef.current = null;
         stopSegmentTimer();
       }
@@ -1325,14 +1353,14 @@ export default function Page() {
   const overall =
     task === "reading"
       ? result?.speechace?.text_score?.speechace_score?.overall ??
-        result?.speechace?.text_score?.overall ??
-        result?.speechace?.speechace_score?.overall ??
-        result?.overall ??
-        null
+      result?.speechace?.text_score?.overall ??
+      result?.speechace?.speechace_score?.overall ??
+      result?.overall ??
+      null
       : result?.speechace?.speech_score?.speechace_score?.overall ??
-        result?.speechace?.speechace_score?.overall ??
-        result?.overall ??
-        null;
+      result?.speechace?.speechace_score?.overall ??
+      result?.overall ??
+      null;
 
   const speechace = result?.speechace;
   const usedText = (result?.usedText || refText || "").trim();
@@ -1370,106 +1398,106 @@ export default function Page() {
   const renderPopups =
     mounted && typeof document !== "undefined"
       ? createPortal(
-          <>
-            {clickPop ? (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: "fixed",
-                  left: clampLeft(clickPop.x + 12, 300),
-                  top: clampTop(clickPop.y + 12, 230),
-                  width: 280,
-                  borderRadius: 16,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,.98)",
-                  boxShadow: "0 18px 40px rgba(15,23,42,.18)",
-                  padding: 10,
-                  zIndex: 9999,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 900 }}>{clickPop.w.word}</div>
-                  <span className="badge accentBadge">
-                    {clickPop.w.quality == null ? "n/a" : (clickPop.w.quality as number).toFixed(0)}
-                  </span>
-                </div>
-
-                <div className="muted" style={{ marginTop: 6 }}>
-                  {formatPhonesForTooltip(clickPop.w) || "(no phone detail)"}
-                </div>
-
-                <div className="muted" style={{ marginTop: 6 }}>
-                  Dịch:{" "}
-                  <b>
-                    {getMeaning(clickPop.w.word) ||
-                      (translatingKey === normalizeWord(clickPop.w.word) ? "đang tra…" : "—")}
-                  </b>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                  <button className="btn3d" onClick={() => void playWord(clickPop.w)} disabled={!audioUrl}>
-                    ▶ nghe lại từ
-                  </button>
-
-                  <button className="btn3d" onClick={() => toggleTts(clickPop.w.word)}>
-                    {ttsSpeaking ? "⏹ Stop mẫu" : "🔈 mẫu (TTS)"}
-                  </button>
-
-                  <button className="btn3d" onClick={() => setClickPop(null)}>
-                    ✕
-                  </button>
-                </div>
-
-                {!(clickPop as any)?.w?.timing ? (
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    *Từ này không có timing → hãy đảm bảo SpeechAce trả extent.
-                  </div>
-                ) : null}
+        <>
+          {clickPop ? (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                left: clampLeft(clickPop.x + 12, 300),
+                top: clampTop(clickPop.y + 12, 230),
+                width: 280,
+                borderRadius: 16,
+                border: "1px solid var(--border)",
+                background: "var(--card-s)",
+                boxShadow: "0 18px 40px rgba(0,0,0,.45)",
+                padding: 10,
+                zIndex: 9999,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 900 }}>{clickPop.w.word}</div>
+                <span className="badge accentBadge">
+                  {clickPop.w.quality == null ? "n/a" : (clickPop.w.quality as number).toFixed(0)}
+                </span>
               </div>
-            ) : null}
 
-            {hover ? (
-              <div
-                style={{
-                  position: "fixed",
-                  left: clampLeft(hover.x + 12, 280),
-                  top: clampTop(hover.y + 12, 200),
-                  width: 260,
-                  borderRadius: 16,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,.98)",
-                  boxShadow: "0 18px 40px rgba(15,23,42,.18)",
-                  padding: 10,
-                  zIndex: 9998,
-                  pointerEvents: "none",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 900 }}>{hover.w.word}</div>
-                  <span className="badge accentBadge">
-                    {hover.w.quality == null ? "n/a" : (hover.w.quality as number).toFixed(0)}
-                  </span>
-                </div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                {formatPhonesForTooltip(clickPop.w) || "(no phone detail)"}
+              </div>
 
-                <div className="muted" style={{ marginTop: 6 }}>
-                  {formatPhonesForTooltip(hover.w) || "(no phone detail)"}
-                </div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                Dịch:{" "}
+                <b>
+                  {getMeaning(clickPop.w.word) ||
+                    (translatingKey === normalizeWord(clickPop.w.word) ? "đang tra…" : "—")}
+                </b>
+              </div>
 
-                <div className="muted" style={{ marginTop: 6 }}>
-                  Dịch:{" "}
-                  <b>
-                    {getMeaning(hover.w.word) || (translatingKey === normalizeWord(hover.w.word) ? "đang tra…" : "—")}
-                  </b>
-                </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <button className="btn3d" onClick={() => void playWord(clickPop.w)} disabled={!audioUrl}>
+                  ▶ nghe lại từ
+                </button>
 
+                <button className="btn3d" onClick={() => toggleTts(clickPop.w.word)}>
+                  {ttsSpeaking ? "⏹ Stop mẫu" : "🔈 mẫu (TTS)"}
+                </button>
+
+                <button className="btn3d" onClick={() => setClickPop(null)}>
+                  ✕
+                </button>
+              </div>
+
+              {!(clickPop as any)?.w?.timing ? (
                 <div className="muted" style={{ marginTop: 8 }}>
-                  click vào từ để nghe lại đúng từ
+                  *Từ này không có timing → hãy đảm bảo SpeechAce trả extent.
                 </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {hover ? (
+            <div
+              style={{
+                position: "fixed",
+                left: clampLeft(hover.x + 12, 280),
+                top: clampTop(hover.y + 12, 200),
+                width: 260,
+                borderRadius: 16,
+                border: "1px solid var(--border)",
+                background: "rgba(255,255,255,.98)",
+                boxShadow: "0 18px 40px rgba(15,23,42,.18)",
+                padding: 10,
+                zIndex: 9998,
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 900 }}>{hover.w.word}</div>
+                <span className="badge accentBadge">
+                  {hover.w.quality == null ? "n/a" : (hover.w.quality as number).toFixed(0)}
+                </span>
               </div>
-            ) : null}
-          </>,
-          document.body
-        )
+
+              <div className="muted" style={{ marginTop: 6 }}>
+                {formatPhonesForTooltip(hover.w) || "(no phone detail)"}
+              </div>
+
+              <div className="muted" style={{ marginTop: 6 }}>
+                Dịch:{" "}
+                <b>
+                  {getMeaning(hover.w.word) || (translatingKey === normalizeWord(hover.w.word) ? "đang tra…" : "—")}
+                </b>
+              </div>
+
+              <div className="muted" style={{ marginTop: 8 }}>
+                click vào từ để nghe lại đúng từ
+              </div>
+            </div>
+          ) : null}
+        </>,
+        document.body
+      )
       : null;
 
   const themeClass = task === "reading" ? "themeReading" : task === "open-ended" ? "themeOpen" : "themeRel";
@@ -1508,9 +1536,9 @@ export default function Page() {
     task === "reading"
       ? speechace?.text_score?.transcript ?? speechace?.transcript ?? ""
       : speechace?.speech_score?.transcript ??
-        speechace?.speech_score?.transcription ??
-        speechace?.transcript ??
-        "";
+      speechace?.speech_score?.transcription ??
+      speechace?.transcript ??
+      "";
 
   const norm100 = (v: any) => {
     const n = typeof v === "number" ? v : Number(v);
@@ -1654,10 +1682,11 @@ export default function Page() {
                       marginTop: 10,
                       padding: 12,
                       borderRadius: 14,
-                      border: "1px solid var(--border)",
-                      background: "rgba(255,255,255,.92)",
+                      border: "1px solid var(--border2)",
+                      background: "var(--surface2)",
                       whiteSpace: "pre-wrap",
                       lineHeight: 1.65,
+                      color: "var(--text)",
                     }}
                   >
                     {openExercise.newContent?.text || ""}
@@ -1749,14 +1778,14 @@ export default function Page() {
                                             const boxStyle: CSSProperties = isCorrectOpt
                                               ? { border: "1px solid rgba(34,197,94,.40)", background: "rgba(34,197,94,.12)" }
                                               : isWrongSelected
-                                              ? { border: "1px solid rgba(239,68,68,.40)", background: "rgba(239,68,68,.12)" }
-                                              : { border: "1px solid rgba(15,23,42,.08)", background: "transparent" };
+                                                ? { border: "1px solid rgba(239,68,68,.40)", background: "rgba(239,68,68,.12)" }
+                                                : { border: "1px solid rgba(15,23,42,.08)", background: "transparent" };
 
                                             const textStyle: CSSProperties = isCorrectOpt
                                               ? { color: "rgb(21 128 61)", fontWeight: 900 }
                                               : isWrongSelected
-                                              ? { color: "rgb(185 28 28)", fontWeight: 900 }
-                                              : {};
+                                                ? { color: "rgb(185 28 28)", fontWeight: 900 }
+                                                : {};
 
                                             return (
                                               <label
@@ -1811,8 +1840,8 @@ export default function Page() {
                                 const correctArr: string[] = Array.isArray((gap as any).answers)
                                   ? (gap as any).answers.map(String)
                                   : Array.isArray(openExercise.answerKey?.[itemId])
-                                  ? openExercise.answerKey[itemId].map(String)
-                                  : [];
+                                    ? openExercise.answerKey[itemId].map(String)
+                                    : [];
 
                                 // ✅ Đếm blanks chuẩn:
                                 // - Nếu text có (1)(2)(3) → đếm theo số thứ tự
@@ -1845,10 +1874,10 @@ export default function Page() {
                                   <>
                                     <div className="muted" style={{ marginTop: 6 }}>
                                       Bấm từ trong “Word bank” để điền nhanh, hoặc tự gõ.
-                                        <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-                                          <button
-                                            type="button"
-                                            className="btn3d btnTiny"
+                                      <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+                                        <button
+                                          type="button"
+                                          className="btn3d btnTiny"
                                           onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -1910,7 +1939,7 @@ export default function Page() {
                                               style={{
                                                 maxWidth: 320,
                                                 borderColor: locked && show ? (ok ? "rgba(34,197,94,.40)" : "rgba(239,68,68,.40)") : undefined,
-                                                }}
+                                              }}
                                             />
 
                                             {show && locked && correct ? (
@@ -2155,6 +2184,9 @@ export default function Page() {
   }
 
   // ===== Score panel (rightTab === "score") =====
+  // ✅ có kết quả ở BẤT KỲ tab nào thì mới cho gửi
+  const hasAnyResult = Object.values(taskState).some((st) => st.result != null);
+
   const scorePanel = (
     <>
       {!result ? (
@@ -2304,10 +2336,10 @@ export default function Page() {
                     band === "good"
                       ? { background: "rgba(34,197,94,.12)", border: "1px solid rgba(34,197,94,.18)" }
                       : band === "warn"
-                      ? { background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.20)" }
-                      : band === "bad"
-                      ? { background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.18)" }
-                      : {};
+                        ? { background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.20)" }
+                        : band === "bad"
+                          ? { background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.18)" }
+                          : {};
 
                   return (
                     <span
@@ -2417,7 +2449,7 @@ export default function Page() {
                         type="button"
                         className="btn3d btnTiny btnPrimary"
                         onClick={() => void sendToTelegram()}
-                        disabled={!result || !canStart() || busy || sending}
+                        disabled={!hasAnyResult || !canStart() || busy || sending}
                       >
                         {sending ? "📤 Đang gửi..." : "📤 Gửi kết quả"}
                       </button>
@@ -2459,7 +2491,8 @@ export default function Page() {
                 padding: 12,
                 borderRadius: 14,
                 border: "1px solid var(--border)",
-                background: "rgba(255,255,255,.9)",
+                background: "var(--surface2)",
+                color: "var(--text2)",
                 overflowX: "auto",
                 fontSize: 12,
                 lineHeight: 1.45,
@@ -2486,11 +2519,11 @@ export default function Page() {
             {task === "reading"
               ? "Reading (tham chiếu theo reference text)"
               : task === "open-ended"
-              ? "Open-ended (tự do theo prompt)"
-              : "Relevance (đúng/ngữ cảnh theo context)"}
+                ? "Open-ended (tự do theo prompt)"
+                : "Relevance (đúng/ngữ cảnh theo context)"}
           </div>
 
-          
+
         </div>
 
         <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -2514,7 +2547,7 @@ export default function Page() {
             type="button"
             className="btn3d btnTiny btnPrimary"
             onClick={() => void sendToTelegram()}
-            disabled={!result || !canStart() || busy || sending}
+            disabled={!hasAnyResult || !canStart() || busy || sending}
             title="Gửi toàn bộ kết quả + bài tập lên Telegram"
           >
             {sending ? "📤 Đang gửi..." : "📤 Gửi kết quả"}
@@ -2537,377 +2570,256 @@ export default function Page() {
 
   return (
     <div
-      className="container"
+      className="appShell"
       onClick={() => {
         setClickPop(null);
       }}
     >
-      <div className="card">
-        <div className="h1">SpeechAce Practice (Web)</div>
-        <p className="sub">
-          Reading / Open-ended / Relevance. Upload hoặc ghi âm → chấm. (Audio user phát lại qua presigned URL; mẫu phát âm
-          dùng Browser TTS nếu cần.)
-        </p>
-
-        <div className={`proGrid ${themeClass}`}>
-          {/* LEFT: MENU */}
-          <aside className="proSide">
-            <div className="sideTabs">
-              <button
-                className={`btn3d tabBtn ${task === "reading" ? "tabBtnActive" : ""}`}
-                onClick={() => {
-                  setHover(null);
-                  setClickPop(null);
-                  setTask("reading");
-                }}
-                disabled={busy || recording}
-              >
-                📘 Reading
-              </button>
-
-              <button
-                className={`btn3d tabBtn ${task === "open-ended" ? "tabBtnActive" : ""}`}
-                onClick={() => {
-                  setHover(null);
-                  setClickPop(null);
-                  setTask("open-ended");
-                }}
-                disabled={busy || recording}
-              >
-                🗣️ Open-ended
-              </button>
-
-              <button
-                className={`btn3d tabBtn ${task === "relevance" ? "tabBtnActive" : ""}`}
-                onClick={() => {
-                  setHover(null);
-                  setClickPop(null);
-                  setTask("relevance");
-                }}
-                disabled={busy || recording}
-              >
-                🎯 Relevance
-              </button>
+      {/* ===== SIDEBAR ===== */}
+      <nav className="sidebar">
+        <div className="sidebarInner">
+          {/* Logo */}
+          <div className="sidebarLogo">
+            <div className="sidebarLogoIcon">🎙</div>
+            <div>
+              <div className="sidebarLogoText">SpeechAce</div>
+              <div className="sidebarLogoSub">AI Practice</div>
             </div>
+          </div>
 
-            <div className="divider" style={{ marginTop: 14 }} />
+          {/* Task Nav */}
+          <div className="sidebarSection">Task</div>
+          <button
+            className={`sidebarItem ${task === "reading" ? "active" : ""}`}
+            onClick={() => { setHover(null); setClickPop(null); setTask("reading"); }}
+            disabled={busy || recording}
+          >
+            <span className="sidebarItemIcon">📘</span> Reading
+          </button>
+          <button
+            className={`sidebarItem ${task === "open-ended" ? "active" : ""}`}
+            onClick={() => { setHover(null); setClickPop(null); setTask("open-ended"); }}
+            disabled={busy || recording}
+          >
+            <span className="sidebarItemIcon">🗣️</span> Open-ended
+          </button>
+          {/* ẨN RELEVANCE — bỏ comment để bật lại
+          <button
+            className={`sidebarItem ${task === "relevance" ? "active" : ""}`}
+            onClick={() => { setHover(null); setClickPop(null); setTask("relevance"); }}
+            disabled={busy || recording}
+          >
+            <span className="sidebarItemIcon">🎯</span> Relevance
+          </button>
+          */}
 
-            <div className="sideScroll">
-              {/* USER INFO */}
-              <div className="section">
-                <div className="sectionTitle">
-                  <span>Thông tin người dùng</span>
-                  <span className="badge accentBadge">Dialect: {dialect}</span>
-                </div>
+          <div className="sidebarDivider" />
 
-                <div className="grid2">
-                  <div className="field">
-                    <label>Họ tên (bắt buộc)</label>
-                    <input
-                      className="input"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Nguyễn Văn A"
-                      disabled={busy || recording}
-                    />
-                  </div>
+          {/* User Info */}
+          <div className="sidebarSection">Thông tin</div>
+          <div style={{ padding: "0 4px", display: "grid", gap: 8 }}>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Họ tên *</label>
+              <input
+                className="input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nguyễn Văn A"
+                disabled={busy || recording}
+              />
+            </div>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Email *</label>
+              <input
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                disabled={busy || recording}
+              />
+            </div>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Dialect</label>
+              <select className="select" value={dialect} onChange={(e) => setDialect(e.target.value as any)} disabled={busy || recording}>
+                {DIALECTS.map((d) => (
+                  <option key={d} value={d}>{d === "en-gb" ? "English (UK)" : "English (US)"}</option>
+                ))}
+              </select>
+            </div>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Chấm điểm</label>
+              <select className="select" value={pronunciationScoreMode} onChange={(e) => setPronunciationScoreMode(e.target.value as any)} disabled={busy || recording}>
+                <option value="default">Default</option>
+                <option value="strict">Strict</option>
+              </select>
+            </div>
+            <label className="row" style={{ gap: 8, cursor: "pointer", padding: "2px 0" }}>
+              <input type="checkbox" checked={detectDialect} onChange={(e) => setDetectDialect(e.target.checked)} disabled={busy || recording} />
+              <span className="muted" style={{ fontSize: 12 }}>Detect dialect</span>
+            </label>
+          </div>
 
-                  <div className="field">
-                    <label>Email (bắt buộc)</label>
-                    <input
-                      className="input"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      disabled={busy || recording}
-                    />
-                  </div>
-                </div>
+          <div className="sidebarDivider" />
 
-                <div className="divider" style={{ marginTop: 12 }} />
+          {/* Exercise Generator */}
+          <div className="sidebarSection">AI Exercise</div>
+          <div style={{ padding: "0 4px", display: "grid", gap: 8 }}>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Level</label>
+              <select className="select" value={exerciseLevel} onChange={(e) => setExerciseLevel(e.target.value)} disabled={exerciseLoading || busy || recording}>
+                <option value="A2">A2</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+                <option value="C1">C1</option>
+              </select>
+            </div>
+            <button
+              className="btn3d btnPrimary"
+              onClick={() => void generateExerciseNow()}
+              disabled={exerciseLoading || busy || recording || task === "relevance"}
+              style={{ width: "100%" }}
+            >
+              {exerciseLoading ? "⏳ Đang tạo..." : "✨ Tạo bài tập AI"}
+            </button>
+            {exerciseErr ? <div className="alert alertErr" style={{ marginTop: 6, padding: "8px 10px", fontSize: 12 }}>{exerciseErr}</div> : null}
+          </div>
 
-                <div className="grid2">
-                  <div className="field">
-                    <label>Dialect</label>
-                    <select
-                      className="select"
-                      value={dialect}
-                      onChange={(e) => setDialect(e.target.value as any)}
-                      disabled={busy || recording}
-                    >
-                      {DIALECTS.map((d) => (
-                        <option key={d} value={d}>
-                          {d === "en-gb" ? "English (UK) — en-gb" : "English (US) — en-us"}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+        </div>
+      </nav>
 
-                  <div className="field">
-                    <label>Chế độ chấm (premium)</label>
-                    <select
-                      className="select"
-                      value={pronunciationScoreMode}
-                      onChange={(e) => setPronunciationScoreMode(e.target.value as any)}
-                      disabled={busy || recording}
-                    >
-                      <option value="default">Default</option>
-                      <option value="strict">Strict</option>
-                    </select>
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      Strict thường khó hơn (phù hợp luyện thi / chấm gắt).
-                    </div>
-                  </div>
-                </div>
+      {/* ===== MAIN CONTENT ===== */}
+      <div className="mainContent">
+        {/* Top Bar */}
+        <header className="topBar">
+          <div className="topBarTitle">
+            {task === "reading" ? "📘 Reading Practice" : task === "open-ended" ? "🗣️ Open-ended Speaking" : "🎯 Relevance Check"}
+            {recording && (
+              <span className="recTimer" style={{ marginLeft: 12, fontSize: 13 }}>
+                <span className="recDot" />
+                REC {seconds}s
+              </span>
+            )}
+          </div>
+          <div className="topBarActions">
+            {busy && <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />}
+            {typeof overall === "number" && (
+              <span className="badge badgeAccent">Overall: {overall.toFixed(1)}</span>
+            )}
+          </div>
+        </header>
 
-                <div className="row" style={{ marginTop: 10 }}>
-                  <label className="row" style={{ gap: 10, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={detectDialect}
-                      onChange={(e) => setDetectDialect(e.target.checked)}
-                      disabled={busy || recording}
-                    />
-                    <span className="muted">Detect dialect (SpeechAce)</span>
-                  </label>
-                </div>
-              </div>
+        {/* Page Body */}
+        <div className="pageContent">
+          <div className="twoCol">
+            {/* LEFT COLUMN: Input / Text */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-              {/* TASK INPUT */}
+              {/* Task-specific input */}
               {task === "reading" ? (
-                <div className="section">
-                  <div className="sectionTitle">
-                    <span>Reference text</span>
-                    <span className="badge accentBadge">Words: {wordsCount(refText)}</span>
+                <div className="card">
+                  <div className="cardTitle">
+                    <div className="cardTitleIcon">📄</div>
+                    Reference Text
+                    <span className="badge badgeMuted" style={{ marginLeft: "auto" }}>{wordsCount(refText)} từ</span>
                   </div>
 
-                  <div className="grid2">
-                    <div className="field">
-                      <label>Reference source</label>
-                      <div className="row" style={{ flexWrap: "wrap" }}>
-                        <button
-                          className={`btn3d ${mode === "library" ? "btnPrimary btnActive" : ""}`}
-                          onClick={() => setMode("library")}
-                          disabled={busy || recording}
-                        >
-                          Văn mẫu
-                        </button>
-                        <button
-                          className={`btn3d ${mode === "custom" ? "btnPrimary btnActive" : ""}`}
-                          onClick={() => setMode("custom")}
-                          disabled={busy || recording}
-                        >
-                          User dán text
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="field">
-                      <label>Mẫu phát âm chuẩn</label>
-                      <button
-                        className="btn3d"
-                        onClick={() => toggleTts(refText || selected?.text || "")}
-                        disabled={busy || recording || wordsCount(refText || selected?.text || "") < 1}
-                        style={{ width: "100%" }}
-                      >
-                        {ttsSpeaking ? "⏹ Stop mẫu (TTS)" : "🔈 Play mẫu (TTS)"}
-                      </button>
-                      <div className="muted" style={{ marginTop: 6 }}>
-                        *Browser TTS (nếu SpeechAce không cung cấp audio mẫu).
-                      </div>
-                    </div>
+                  <div className="tabs" style={{ marginBottom: 12 }}>
+                    <button className={`tabItem ${mode === "library" ? "active" : ""}`} onClick={() => setMode("library")} disabled={busy || recording}>Văn mẫu</button>
+                    <button className={`tabItem ${mode === "custom" ? "active" : ""}`} onClick={() => setMode("custom")} disabled={busy || recording}>Tự nhập</button>
                   </div>
-
-                  <div className="divider" style={{ marginTop: 12 }} />
 
                   {mode === "library" ? (
                     <>
-                      <div className="field">
-                        <label>Chọn văn mẫu</label>
-                        <select
-                          className="select"
-                          value={selectedId}
-                          onChange={(e) => setSelectedId(e.target.value)}
-                          disabled={busy || recording}
-                        >
-                          {passages.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.title}
-                            </option>
-                          ))}
+                      <div className="fieldGroup">
+                        <label className="label">Chọn văn mẫu</label>
+                        <select className="select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} disabled={busy || recording}>
+                          {passages.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
                         </select>
                       </div>
-
-                      <div className="divider" style={{ marginTop: 12 }} />
-
-                      <div
-                        style={{
-                          border: "1px solid var(--border)",
-                          borderRadius: 14,
-                          padding: 12,
-                          background: "rgba(255,255,255,.92)",
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.6,
-                        }}
-                      >
+                      <div style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--surface2)", padding: 12, whiteSpace: "pre-wrap", lineHeight: 1.65, fontSize: 14, color: "var(--text2)" }}>
                         {selected?.text || ""}
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="field">
-                        <label>Tiêu đề (tuỳ chọn - để lưu vào thư viện)</label>
-                        <input
-                          className="input"
-                          value={customTitle}
-                          onChange={(e) => setCustomTitle(e.target.value)}
-                          disabled={busy || recording}
-                          placeholder="My passage"
-                        />
+                      <div className="fieldGroup">
+                        <label className="label">Tiêu đề</label>
+                        <input className="input" value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} disabled={busy || recording} placeholder="My passage" />
                       </div>
-
-                      <div className="field" style={{ marginTop: 10 }}>
-                        <label>Reference text (bắt buộc)</label>
-                        <textarea
-                          className="textarea"
-                          value={customText}
-                          onChange={(e) => setCustomText(e.target.value)}
-                          disabled={busy || recording}
-                          placeholder="Dán đoạn bạn muốn user đọc..."
-                        />
+                      <div className="fieldGroup">
+                        <label className="label">Reference text *</label>
+                        <textarea className="textarea" value={customText} onChange={(e) => setCustomText(e.target.value)} disabled={busy || recording} placeholder="Dán đoạn văn bạn muốn luyện đọc..." />
                       </div>
-
-                      <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
-                        <button className="btn3d" onClick={addCustomPassageToLibrary} disabled={busy || recording}>
-                          Lưu vào thư viện
-                        </button>
-                        <span className="badge accentBadge">Words: {wordsCount(customText)}</span>
+                      <div className="row">
+                        <button className="btn3d" onClick={addCustomPassageToLibrary} disabled={busy || recording}>Lưu vào thư viện</button>
+                        <span className="badge badgeMuted">{wordsCount(customText)} từ</span>
                       </div>
                     </>
                   )}
+
+                  <div className="divider" />
+                  <button className="btn3d" onClick={() => toggleTts(refText || selected?.text || "")} disabled={busy || recording || wordsCount(refText || selected?.text || "") < 1} style={{ width: "100%" }}>
+                    {ttsSpeaking ? "⏹ Dừng TTS" : "🔈 Nghe mẫu (TTS)"}
+                  </button>
                 </div>
               ) : task === "open-ended" ? (
-                <div className="section">
-                  <div className="sectionTitle">
-                    <span>Open-ended prompt</span>
-                    <span className="badge accentBadge">IELTS: {ieltsObj ? "ON" : "n/a"}</span>
+                <div className="card">
+                  <div className="cardTitle">
+                    <div className="cardTitleIcon">💬</div>
+                    Prompt
                   </div>
-                  <div className="field">
-                    <label>Prompt</label>
-                    <textarea
-                      className="textarea"
-                      value={openPrompt}
-                      onChange={(e) => setOpenPrompt(e.target.value)}
-                      disabled={busy || recording}
-                    />
+                  <div className="fieldGroup">
+                    <label className="label">Câu hỏi / chủ đề nói</label>
+                    <textarea className="textarea" value={openPrompt} onChange={(e) => setOpenPrompt(e.target.value)} disabled={busy || recording} />
                   </div>
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    Tip: nói tự nhiên 1–2 phút (API tối đa), nên có mở bài – thân bài – kết.
-                  </div>
+                  <p className="muted">Tip: nói tự nhiên 1–2 phút, có mở bài – thân bài – kết.</p>
                 </div>
               ) : (
-                <div className="section">
-                  <div className="sectionTitle">
-                    <span>Relevance context</span>
-                    <span className="badge accentBadge">Class: {relevanceClass ?? "n/a"}</span>
+                <div className="card">
+                  <div className="cardTitle">
+                    <div className="cardTitleIcon">🎯</div>
+                    Relevance Context
+                    {relevanceClass && <span className={`badge ${relevanceClass === "TRUE" ? "badgeSuccess" : "badgeDanger"}`} style={{ marginLeft: "auto" }}>{relevanceClass}</span>}
                   </div>
-                  <div className="field">
-                    <label>Context</label>
-                    <textarea
-                      className="textarea"
-                      value={relevanceContext}
-                      onChange={(e) => setRelevanceContext(e.target.value)}
-                      disabled={busy || recording}
-                    />
+                  <div className="fieldGroup">
+                    <label className="label">Context / Chủ đề</label>
+                    <textarea className="textarea" value={relevanceContext} onChange={(e) => setRelevanceContext(e.target.value)} disabled={busy || recording} />
                   </div>
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    Tip: nói đúng trọng tâm đề bài để relevance lên TRUE.
-                  </div>
+                  <p className="muted">Tip: nói đúng trọng tâm đề bài để relevance lên TRUE.</p>
                 </div>
               )}
 
-              {/* EXERCISE GENERATOR */}
-              <div className="section">
-                <div className="sectionTitle">
-                  <span>✨ Tạo bài tập mới (AI)</span>
-                  <span className="badge accentBadge">{exerciseLevel}</span>
+              {/* Recording Card */}
+              <div className="card">
+                <div className="cardTitle">
+                  <div className="cardTitleIcon">🎙</div>
+                  Ghi âm / Upload
+                  {mounted && <span className="badge badgeMuted" style={{ marginLeft: "auto", fontSize: 11 }} suppressHydrationWarning>{recorderName}</span>}
                 </div>
 
-                <div className="grid2">
-                  <div className="field">
-                    <label>Level</label>
-                    <select
-                      className="select"
-                      value={exerciseLevel}
-                      onChange={(e) => setExerciseLevel(e.target.value)}
-                      disabled={exerciseLoading || busy || recording}
-                    >
-                      <option value="A2">A2</option>
-                      <option value="B1">B1</option>
-                      <option value="B2">B2</option>
-                      <option value="C1">C1</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label>&nbsp;</label>
-                    <button
-                      className="btn3d btnPrimary"
-                      onClick={() => void generateExerciseNow()}
-                      disabled={exerciseLoading || busy || recording || task === "relevance"}
-                      style={{ width: "100%" }}
-                    >
-                      {exerciseLoading ? "⏳ Đang tạo..." : "Tạo bài tập mới"}
-                    </button>
-                  </div>
-                </div>
-
-                {task === "relevance" ? (
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    Relevance tạm thời chưa tạo bài tập tự động.
-                  </div>
-                ) : null}
-
-                {exerciseErr ? <div className="alertError">Lỗi: {exerciseErr}</div> : null}
-
-                <div className="muted" style={{ marginTop: 8 }}>
-                  *Bài tập mới = passage/prompt mới + (các dạng câu hỏi do API trả về) + đáp án/rubric.
-                </div>
-              </div>
-
-              {/* RECORD / UPLOAD */}
-              <div className="section">
-                <div className="sectionTitle">
-                  <span>Ghi âm / Upload audio</span>
-                  <span className="badge accentBadge" suppressHydrationWarning>
-                    Recorder: {recorderName}
-                  </span>
-                </div>
-
-                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-                  <button className="btn3d btnPrimary" onClick={() => void startRec()} disabled={busy || recording}>
-                    🎙️ Bắt đầu ghi
+                <div className="row" style={{ gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+                  <button
+                    className={`btn3d btnRecord ${recording ? "recording" : "btnPrimary"}`}
+                    onClick={() => recording ? void stopRec() : void startRec()}
+                    disabled={busy}
+                    style={{ flex: 1, minWidth: 140 }}
+                  >
+                    {recording ? `⏹ Dừng (${seconds}s)` : "🎙 Bắt đầu ghi"}
                   </button>
-                  <button className="btn3d btnDanger" onClick={() => void stopRec()} disabled={busy || !recording}>
-                    ⏹ Dừng ({seconds}s)
-                  </button>
-                  <span className="badge accentBadge">Time: {seconds}s</span>
                 </div>
 
-                {busy ? (
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    Đang upload &amp; chấm điểm...
-                  </div>
-                ) : null}
+                {busy && (
+                  <div className="alert alertInfo" style={{ marginBottom: 10 }}>⏳ Đang upload &amp; chấm điểm...</div>
+                )}
 
-                <div className="divider" style={{ marginTop: 12 }} />
+                <div className="divider" />
 
-                <div className="field">
-                  <label>Upload audio file (mp3/wav/webm/…)</label>
+                <div className="fieldGroup" style={{ marginBottom: 0 }}>
+                  <label className="label">Upload file audio (mp3/wav/webm…)</label>
                   <input
                     ref={fileInputRef}
                     key={`file-${task}`}
-                    className="input fileInput"
+                    className="input"
                     type="file"
                     accept="audio/*"
                     onChange={(e) => {
@@ -2917,662 +2829,86 @@ export default function Page() {
                     }}
                     disabled={busy || recording}
                   />
+                  {uploadedFile && <div className="muted" style={{ marginTop: 4 }}>✅ {uploadedFile.name}</div>}
+                </div>
+                <button className="btn3d btnPrimary" onClick={() => void scoreUploadedFile()} disabled={busy || recording || !uploadedFile} style={{ width: "100%", marginTop: 10 }}>
+                  Chấm file upload
+                </button>
+              </div>
 
-                  {uploadedFile ? (
-                    <div className="muted" style={{ marginTop: 8 }}>
-                      Selected: <b>{uploadedFile.name}</b>
+              {err && <div className="alert alertErr">⚠ {err}</div>}
+            </div>
+
+            {/* RIGHT COLUMN: Results */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Results Header */}
+              <div className="card">
+                <div className="sectionHeader">
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>Kết quả chấm</div>
+                    <div className="muted" style={{ marginTop: 2 }}>
+                      {task === "reading" ? "Reading – theo reference text" : task === "open-ended" ? "Open-ended – theo prompt" : "Relevance – theo context"}
                     </div>
-                  ) : null}
-
-                  <button
-                    className="btn3d btnPrimary"
-                    onClick={() => void scoreUploadedFile()}
-                    disabled={busy || recording || !uploadedFile}
-                    style={{ width: "100%", marginTop: 10 }}
-                  >
-                    Chấm file upload
-                  </button>
+                  </div>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" className={`btn3d ${rightTab === "score" ? "btnPrimary" : ""}`} style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => setRightTab("score")}>📊 Điểm</button>
+                    <button type="button" className={`btn3d ${rightTab === "exercises" ? "btnPrimary" : ""}`} style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => setRightTab("exercises")}>🧩 Bài tập ({exercises.length})</button>
+                    <button
+                      type="button"
+                      className="btn3d btnPrimary"
+                      style={{ padding: "6px 12px", fontSize: 12 }}
+                      onClick={() => void sendToTelegram()}
+                      disabled={!result || !canStart() || busy || sending}
+                    >
+                      {sending ? "📤 Đang gửi..." : "📤 Telegram"}
+                    </button>
+                    {sendOk && <span className="badge badgeSuccess">✅ Đã gửi</span>}
+                  </div>
                 </div>
 
-                <div className="muted" style={{ marginTop: 12 }}>
-                  Kết quả sẽ hiển thị ở panel bên phải.
-                </div>
+                {sendErr && <div className="alert alertErr">{sendErr}</div>}
+
+                {rightTab === "exercises" ? null : (
+                  /* Score overview ring */
+                  typeof overall === "number" ? (
+                    <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+                      <div className="scoreRingWrap">
+                        <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" :
+                          overall >= 60 ? "scoreRingWarn" : "scoreRingBad"
+                          }`}>{overall.toFixed(0)}</div>
+                        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Overall</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div className="metricsGrid">
+                          <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
+                          <Metric label="Fluency" value={scoreObj?.fluency} />
+                          {task !== "reading" && <Metric label="Grammar" value={scoreObj?.grammar} />}
+                          {task !== "reading" && <Metric label="Coherence" value={scoreObj?.coherence} />}
+                          {task !== "reading" && <Metric label="Vocab" value={scoreObj?.vocab} />}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    !busy && result ? null : (
+                      <div className="muted" style={{ marginTop: 12, padding: "20px 0", textAlign: "center" }}>
+                        {busy ? "⏳ Đang chấm điểm..." : "Chưa có kết quả. Hãy ghi âm hoặc upload audio."}
+                      </div>
+                    )
+                  )
+                )}
+              </div>
+
+              {/* Score or Exercise Panel */}
+              <div className="card" style={{ padding: rightTab === "exercises" ? 16 : 0, border: rightTab === "exercises" ? undefined : "none", background: rightTab === "exercises" ? undefined : "transparent", boxShadow: rightTab === "exercises" ? undefined : "none" }}>
+                {rightTab === "exercises" ? renderExercisesPanel() : scorePanel}
               </div>
             </div>
-          </aside>
-
-          {/* RIGHT: RESULTS */}
-          <main className="proMain">{resultsPanel}</main>
+          </div>
         </div>
       </div>
-
-      <style jsx global>{`
-        :root {
-          --border: rgba(15, 23, 42, 0.12);
-          --shadow: 0 18px 60px rgba(2, 6, 23, 0.2);
-          --text: #0f172a;
-          --muted: #475569;
-
-          --accent: #6366f1;
-          --accentSoft: rgba(99, 102, 241, 0.14);
-          --accentBorder: rgba(99, 102, 241, 0.26);
-          --accentText: #1e1b4b;
-
-          --accentA: #6366f1;
-          --accentB: #4338ca;
-        }
-
-        body {
-          background: radial-gradient(1000px 700px at 10% 10%, rgba(99, 102, 241, 0.35), transparent 60%),
-            radial-gradient(900px 650px at 90% 0%, rgba(34, 197, 94, 0.28), transparent 55%),
-            linear-gradient(180deg, #0b1020, #0b1020);
-        }
-
-        .container {
-          padding: 14px;
-          max-width: 100%;
-          margin: 0;
-        }
-
-        .card {
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 24px;
-          box-shadow: var(--shadow);
-          padding: 18px;
-          backdrop-filter: blur(10px);
-        }
-
-        .h1 {
-          color: #fff;
-          font-size: 22px;
-          font-weight: 900;
-          letter-spacing: 0.2px;
-        }
-
-        .sub {
-          color: rgba(255, 255, 255, 0.75);
-          margin-top: 6px;
-        }
-
-        .proGrid {
-          display: grid;
-          grid-template-columns: 420px 1fr;
-          gap: 16px;
-          margin-top: 16px;
-        }
-
-        .proSide {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid var(--border);
-          border-radius: 22px;
-          padding: 14px;
-          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.1);
-        }
-
-        .proMain {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid var(--border);
-          border-radius: 22px;
-          padding: 16px;
-          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.1);
-          min-height: 520px;
-        }
-
-        .sideTabs {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .sideTabs .btn3d {
-          width: 100%;
-          justify-content: flex-start;
-        }
-
-        .sideScroll {
-          margin-top: 14px;
-          max-height: calc(100vh - 220px);
-          overflow: auto;
-          padding-right: 6px;
-        }
-
-        .sideScroll::-webkit-scrollbar {
-          width: 10px;
-        }
-
-        .sideScroll::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.18);
-          border-radius: 999px;
-          border: 3px solid rgba(255, 255, 255, 0.75);
-        }
-
-        .section {
-          background: rgba(255, 255, 255, 0.98);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          border-radius: 18px;
-          padding: 14px;
-          box-shadow: 0 10px 25px rgba(2, 6, 23, 0.06);
-        }
-
-        .section + .section {
-          margin-top: 14px;
-        }
-
-        .sectionTitle {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-weight: 900;
-          color: var(--text);
-          margin-bottom: 10px;
-        }
-
-        .divider {
-          height: 1px;
-          background: rgba(15, 23, 42, 0.1);
-          border: 0;
-        }
-
-        .muted {
-          color: var(--muted);
-          font-size: 13px;
-        }
-
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(99, 102, 241, 0.12);
-          border: 1px solid rgba(99, 102, 241, 0.22);
-          color: #1e1b4b;
-          font-weight: 800;
-          font-size: 12px;
-        }
-
-        .accentBadge {
-          background: var(--accentSoft) !important;
-          border: 1px solid var(--accentBorder) !important;
-          color: var(--accentText) !important;
-        }
-
-        .grid2 {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-        }
-
-        .row {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-        }
-
-        .input,
-        .select,
-        .textarea {
-          width: 100%;
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.14);
-          background: rgba(255, 255, 255, 0.98);
-          padding: 10px 12px;
-          outline: none;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-        }
-
-        .textarea {
-          min-height: 120px;
-          resize: vertical;
-        }
-
-        /* 3D Buttons */
-        .btn3d {
-          border: 0;
-          cursor: pointer;
-          border-radius: 14px;
-          padding: 11px 14px;
-          font-weight: 900;
-          color: #0b1020;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.8));
-          box-shadow: 0 10px 0 rgba(15, 23, 42, 0.08), 0 16px 28px rgba(2, 6, 23, 0.12);
-          transform: translateY(0);
-          transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
-          user-select: none;
-        }
-
-        .btn3d:hover {
-          filter: brightness(1.02);
-          transform: translateY(-1px);
-        }
-
-        .btn3d:active {
-          transform: translateY(3px);
-          box-shadow: 0 7px 0 rgba(15, 23, 42, 0.1), 0 10px 18px rgba(2, 6, 23, 0.14);
-        }
-
-        .btn3d:disabled {
-          opacity: 0.55;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .btnPrimary {
-          color: #fff;
-          background: linear-gradient(180deg, #6366f1, #4338ca);
-          box-shadow: 0 10px 0 rgba(67, 56, 202, 0.35), 0 16px 28px rgba(2, 6, 23, 0.22);
-        }
-
-        .btnDanger {
-          color: #fff;
-          background: linear-gradient(180deg, #fb7185, #ef4444);
-          box-shadow: 0 10px 0 rgba(239, 68, 68, 0.28), 0 16px 28px rgba(2, 6, 23, 0.22);
-        }
-
-        .btnActive {
-          outline: 3px solid rgba(255, 255, 255, 0.35);
-        }
-
-        /* ===== Theme vars per task ===== */
-        .themeReading {
-          --tab1: #6366f1;
-          --tab2: #4338ca;
-          --tabShadow: rgba(67, 56, 202, 0.35);
-
-          --accentA: #06b6d4;
-          --accentB: #3b82f6;
-          --accent: #3b82f6;
-          --accentText: #083344;
-          --accentSoft: rgba(6, 182, 212, 0.12);
-          --accentBorder: rgba(6, 182, 212, 0.26);
-        }
-
-        .themeOpen {
-          --tab1: #22c55e;
-          --tab2: #16a34a;
-          --tabShadow: rgba(22, 163, 74, 0.35);
-
-          --accentA: #8b5cf6;
-          --accentB: #6366f1;
-          --accent: #6366f1;
-          --accentText: #2e1065;
-          --accentSoft: rgba(139, 92, 246, 0.12);
-          --accentBorder: rgba(139, 92, 246, 0.26);
-        }
-
-        .themeRel {
-          --tab1: #f59e0b;
-          --tab2: #d97706;
-          --tabShadow: rgba(217, 119, 6, 0.35);
-
-          --accentA: #f97316;
-          --accentB: #ef4444;
-          --accent: #ef4444;
-          --accentText: #7c2d12;
-          --accentSoft: rgba(249, 115, 22, 0.12);
-          --accentBorder: rgba(249, 115, 22, 0.26);
-        }
-
-        /* Tabs: inactive dim, active bright */
-        .tabBtn {
-          width: 100%;
-          justify-content: flex-start;
-          opacity: 0.55;
-          background: rgba(255, 255, 255, 0.78);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          box-shadow: 0 10px 0 rgba(15, 23, 42, 0.06), 0 16px 28px rgba(2, 6, 23, 0.1);
-        }
-
-        .tabBtn:hover {
-          opacity: 0.75;
-        }
-
-        .tabBtnActive {
-          opacity: 1;
-          color: #fff;
-          background: linear-gradient(180deg, var(--tab1), var(--tab2));
-          box-shadow: 0 10px 0 var(--tabShadow), 0 16px 28px rgba(2, 6, 23, 0.22);
-        }
-
-        .tabBtnActive:hover {
-          filter: brightness(1.03);
-        }
-
-        /* Results header + dashboard */
-        .resultsHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 12px;
-          padding: 14px;
-          border-radius: 18px;
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          background: radial-gradient(700px 240px at 20% 0%, var(--accentSoft), transparent 60%),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9));
-          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
-        }
-
-        .resultsTitle {
-          font-weight: 1000;
-          font-size: 18px;
-          color: var(--text);
-          position: relative;
-          padding-left: 10px;
-        }
-
-        .resultsTitle:before {
-          content: "";
-          position: absolute;
-          left: 0;
-          top: 3px;
-          bottom: 3px;
-          width: 6px;
-          border-radius: 999px;
-          background: var(--accent);
-        }
-
-        .resultsSub {
-          color: var(--muted);
-          font-size: 13px;
-          margin-top: 4px;
-          font-weight: 700;
-        }
-
-        .dashGrid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-          margin-top: 12px;
-        }
-
-        .metricCardPro {
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          border-radius: 18px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
-          border-left: 6px solid var(--accent);
-        }
-
-        .metricTop {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          gap: 10px;
-        }
-
-        .metricLabel {
-          color: var(--muted);
-          font-weight: 800;
-          font-size: 12px;
-        }
-
-        .metricValue {
-          font-weight: 1000;
-          font-size: 22px;
-        }
-
-        .metricSub {
-          margin-top: 8px;
-          color: var(--muted);
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .bar {
-          height: 10px;
-          border-radius: 999px;
-          background: rgba(15, 23, 42, 0.08);
-          overflow: hidden;
-          margin-top: 10px;
-        }
-
-        .barFill {
-          height: 100%;
-          border-radius: 999px;
-          background: linear-gradient(90deg, var(--accentA), var(--accentB));
-          width: 0%;
-          transition: width 240ms ease;
-        }
-
-        .quickCard {
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          border-radius: 18px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
-        }
-
-        .issueWrap {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .issuePill {
-          padding: 7px 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 900;
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          background: rgba(255, 255, 255, 0.9);
-        }
-
-        .issueWarn {
-          background: rgba(245, 158, 11, 0.12);
-          border-color: rgba(245, 158, 11, 0.22);
-          color: #7c2d12;
-        }
-
-        .issueErr {
-          background: rgba(239, 68, 68, 0.12);
-          border-color: rgba(239, 68, 68, 0.22);
-          color: #7f1d1d;
-        }
-
-        .issueInfo {
-          background: rgba(99, 102, 241, 0.12);
-          border-color: rgba(99, 102, 241, 0.22);
-          color: #1e1b4b;
-        }
-
-        .relBox {
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          border-radius: 18px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
-          margin-top: 12px;
-        }
-
-        .relRow {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-
-        .relPill {
-          padding: 7px 12px;
-          border-radius: 999px;
-          font-weight: 1000;
-          border: 1px solid rgba(15, 23, 42, 0.12);
-        }
-
-        .relTrue {
-          background: rgba(34, 197, 94, 0.12);
-          border-color: rgba(34, 197, 94, 0.22);
-          color: #064e3b;
-        }
-
-        .relFalse {
-          background: rgba(239, 68, 68, 0.12);
-          border-color: rgba(239, 68, 68, 0.22);
-          color: #7f1d1d;
-        }
-
-        .alertError {
-          margin-top: 12px;
-          padding: 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(239, 68, 68, 0.28);
-          background: rgba(239, 68, 68, 0.08);
-          color: #7f1d1d;
-          font-weight: 800;
-        }
-
-        /* Dashboard card */
-        .dashCard {
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          border-radius: 18px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
-        }
-
-        .dashControls {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 10px;
-          margin-top: 10px;
-        }
-
-        .historyList {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .historyRow {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 14px;
-          padding: 10px;
-          background: rgba(255, 255, 255, 0.98);
-        }
-
-        .btnTiny {
-          padding: 8px 10px;
-          border-radius: 12px;
-        }
-
-        /* Key-value list for relevance extra */
-        .kvList {
-          display: grid;
-          gap: 8px;
-        }
-
-        .kvRow {
-          display: grid;
-          grid-template-columns: 160px 1fr;
-          gap: 10px;
-          padding: 10px;
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.98);
-        }
-
-        .kvKey {
-          font-weight: 900;
-          color: rgba(15, 23, 42, 0.72);
-        }
-
-        .kvVal {
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-          font-size: 12px;
-          overflow-wrap: anywhere;
-        }
-
-        /* ===== Exercises UI ===== */
-        .rightTabs {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-top: 12px;
-        }
-
-        .exSplit {
-          display: grid;
-          grid-template-columns: 340px 1fr;
-          gap: 12px;
-          margin-top: 12px;
-        }
-
-        .exList {
-          max-height: calc(100vh - 260px);
-          overflow: auto;
-          padding-right: 6px;
-        }
-
-        .exViewer {
-          min-height: 420px;
-        }
-
-        .exList::-webkit-scrollbar {
-          width: 10px;
-        }
-
-        .exList::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.18);
-          border-radius: 999px;
-          border: 3px solid rgba(255, 255, 255, 0.75);
-        }
-
-        @media (max-width: 980px) {
-          .exSplit {
-            grid-template-columns: 1fr;
-          }
-          .exList {
-            max-height: none;
-          }
-        }
-
-        @media (max-width: 980px) {
-          .proGrid {
-            grid-template-columns: 1fr;
-          }
-          .sideScroll {
-            max-height: none;
-          }
-          .dashGrid {
-            grid-template-columns: 1fr;
-          }
-          .dashControls {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .grid2 {
-            grid-template-columns: 1fr !important;
-          }
-          .row {
-            flex-wrap: wrap !important;
-          }
-          .btn3d {
-            min-height: 44px;
-            font-size: 16px;
-          }
-          .input,
-          .select,
-          .textarea,
-          input[type="file"].fileInput {
-            font-size: 16px !important;
-          }
-          input[type="file"].fileInput {
-            height: auto !important;
-            padding: 10px 12px !important;
-          }
-          .kvRow {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
 
       {renderPopups}
     </div>
   );
 }
+
