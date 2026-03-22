@@ -2821,100 +2821,58 @@ export default function Page() {
           {/* User Info */}
           <div className="sidebarSection">Thông tin</div>
           <div style={{ padding: "0 4px", display: "grid", gap: 8 }}>
-            {userInfoLocked ? (
-              /* ── Đã lưu: hiện thông tin + nút đổi user ── */
-              <>
-                <div style={{ padding: 10, borderRadius: 12, background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.12)" }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>👤 {fullName}</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{email}</div>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Họ tên *</label>
+              <input
+                className="input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nguyễn Văn A"
+                disabled={busy || recording}
+              />
+            </div>
+            <div className="fieldGroup" style={{ marginBottom: 0 }}>
+              <label className="label">Email *</label>
+              <input
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                disabled={busy || recording}
+              />
+            </div>
+            <button
+              className="btn3d btnPrimary"
+              onClick={saveCurrentUser}
+              disabled={!fullName.trim() || !email.trim() || busy || recording}
+              style={{ width: "100%" }}
+            >
+              {userInfoLocked ? "✅ Đã lưu" : "💾 Lưu thông tin"}
+            </button>
+            {/* Danh sách người dùng đã lưu */}
+            {userProfiles.length > 0 && (
+              <div>
+                <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Chọn người dùng đã lưu:</div>
+                <div style={{ display: "grid", gap: 4 }}>
+                  {userProfiles.map((p) => (
+                    <button
+                      key={p.id}
+                      className="btn3d btnTiny"
+                      onClick={() => switchToUser(p.id)}
+                      disabled={busy || recording}
+                      style={{
+                        width: "100%", textAlign: "left", padding: "8px 10px",
+                        background: p.id === activeUserId ? "rgba(59,130,246,.15)" : "rgba(255,255,255,.03)",
+                        border: p.id === activeUserId ? "1px solid rgba(59,130,246,.3)" : "1px solid rgba(255,255,255,.06)",
+                        borderRadius: 10, cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>👤 {p.fullName}</div>
+                      <div className="muted" style={{ fontSize: 11 }}>{p.email}</div>
+                    </button>
+                  ))}
                 </div>
-                <button
-                  className="btn3d btnTiny"
-                  onClick={logoutUser}
-                  disabled={busy || recording}
-                  style={{ width: "100%" }}
-                >
-                  🔄 Đổi người dùng
-                </button>
-                {userProfiles.length > 1 && (
-                  <select
-                    className="select"
-                    value={activeUserId}
-                    onChange={(e) => switchToUser(e.target.value)}
-                    disabled={busy || recording}
-                    style={{ fontSize: 12 }}
-                  >
-                    {userProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
-                    ))}
-                  </select>
-                )}
-              </>
-            ) : (
-              /* ── Chưa lưu: hiện danh sách đã lưu + form thêm mới ── */
-              <>
-                {/* Danh sách người dùng đã lưu */}
-                {userProfiles.length > 0 && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>Người dùng đã lưu:</div>
-                    <div style={{ display: "grid", gap: 4 }}>
-                      {userProfiles.map((p) => (
-                        <button
-                          key={p.id}
-                          className="btn3d btnTiny"
-                          onClick={() => switchToUser(p.id)}
-                          disabled={busy || recording}
-                          style={{
-                            width: "100%", textAlign: "left", padding: "8px 10px",
-                            background: "rgba(59,130,246,.06)", border: "1px solid rgba(59,130,246,.12)",
-                            borderRadius: 10, cursor: "pointer",
-                          }}
-                        >
-                          <div style={{ fontWeight: 700, fontSize: 12 }}>👤 {p.fullName}</div>
-                          <div className="muted" style={{ fontSize: 11 }}>{p.email}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Divider */}
-                {userProfiles.length > 0 && (
-                  <div className="muted" style={{ fontSize: 11, marginBottom: 4, textAlign: "center" }}>
-                    ── hoặc thêm người dùng mới ──
-                  </div>
-                )}
-
-                {/* Form thêm mới */}
-                <div className="fieldGroup" style={{ marginBottom: 0 }}>
-                  <label className="label">Họ tên *</label>
-                  <input
-                    className="input"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                    disabled={busy || recording}
-                  />
-                </div>
-                <div className="fieldGroup" style={{ marginBottom: 0 }}>
-                  <label className="label">Email *</label>
-                  <input
-                    className="input"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    disabled={busy || recording}
-                  />
-                </div>
-                <button
-                  className="btn3d btnPrimary"
-                  onClick={saveCurrentUser}
-                  disabled={!fullName.trim() || !email.trim() || busy || recording}
-                  style={{ width: "100%" }}
-                >
-                  💾 Lưu thông tin
-                </button>
-              </>
+              </div>
             )}
             <div className="fieldGroup" style={{ marginBottom: 0 }}>
               <label className="label">Dialect</label>
