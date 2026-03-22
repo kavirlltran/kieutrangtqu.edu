@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { r2Client, r2Bucket, r2PublicBaseUrl } from "@/lib/r2";
+import { r2Client, r2Bucket } from "@/lib/r2";
 import { isDialect } from "@/lib/dialects";
 
 type WeakestWord = { word: string; q: number };
@@ -38,17 +38,7 @@ function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
   return ab;
 }
 
-async function sendTelegram(text: string) {
-  const token = must("TELEGRAM_BOT_TOKEN");
-  const chatId = must("TELEGRAM_CHAT_ID");
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
-  await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
-  });
-}
 
 export async function POST(req: Request) {
   try {
@@ -116,34 +106,6 @@ export async function POST(req: Request) {
       .filter((w: WeakestWord) => Boolean(w.word))
       .sort((a: WeakestWord, b: WeakestWord) => a.q - b.q)
       .slice(0, 8);
-
-    const pub = r2PublicBaseUrl();
-    const audioLink = pub ? `${pub.replace(/\/$/, "")}/${audioKey}` : null;
-
-    const msg =
-      `📩 New Reading Result\n` +
-      `Name: ${fullName}\n` +
-      `Email: ${email}\n` +
-      `Dialect: ${dialect}\n` +
-      (typeof durationSec === "number" ? `Duration: ${durationSec}s\n` : "") +
-      `Overall: ${overall ?? "n/a"}\n` +
-      // ✅ FIX: explicitly type w
-      (weakest.length
-        ? `Weakest words: ${weakest
-            .map((w: WeakestWord) => `${w.word}(${w.q.toFixed(0)})`)
-            .join(", ")}\n`
-        : "") +
-      (audioLink ? `Audio: ${audioLink}\n` : "") +
-      `Text: ${text.slice(0, 220)}${text.length > 220 ? "…" : ""}`;
-
-    // Don't block the user if Telegram temporarily fails.
-    try {
-      if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
-        await sendTelegram(msg);
-      }
-    } catch {
-      // noop
-    }
 
     return Response.json({ ok: true, task: "reading", overall, dialect, audioKey, speechace });
   } catch (e: any) {

@@ -2851,8 +2851,41 @@ export default function Page() {
                 )}
               </>
             ) : (
-              /* ── Chưa lưu: hiện form nhập ── */
+              /* ── Chưa lưu: hiện danh sách đã lưu + form thêm mới ── */
               <>
+                {/* Danh sách người dùng đã lưu */}
+                {userProfiles.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>Người dùng đã lưu:</div>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      {userProfiles.map((p) => (
+                        <button
+                          key={p.id}
+                          className="btn3d btnTiny"
+                          onClick={() => switchToUser(p.id)}
+                          disabled={busy || recording}
+                          style={{
+                            width: "100%", textAlign: "left", padding: "8px 10px",
+                            background: "rgba(59,130,246,.06)", border: "1px solid rgba(59,130,246,.12)",
+                            borderRadius: 10, cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 12 }}>👤 {p.fullName}</div>
+                          <div className="muted" style={{ fontSize: 11 }}>{p.email}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Divider */}
+                {userProfiles.length > 0 && (
+                  <div className="muted" style={{ fontSize: 11, marginBottom: 4, textAlign: "center" }}>
+                    ── hoặc thêm người dùng mới ──
+                  </div>
+                )}
+
+                {/* Form thêm mới */}
                 <div className="fieldGroup" style={{ marginBottom: 0 }}>
                   <label className="label">Họ tên *</label>
                   <input
@@ -2881,23 +2914,6 @@ export default function Page() {
                 >
                   💾 Lưu thông tin
                 </button>
-                {userProfiles.length > 0 && (
-                  <>
-                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Hoặc chọn người dùng đã lưu:</div>
-                    <select
-                      className="select"
-                      value=""
-                      onChange={(e) => e.target.value && switchToUser(e.target.value)}
-                      disabled={busy || recording}
-                      style={{ fontSize: 12 }}
-                    >
-                      <option value="">— Chọn —</option>
-                      {userProfiles.map((p) => (
-                        <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
-                      ))}
-                    </select>
-                  </>
-                )}
               </>
             )}
             <div className="fieldGroup" style={{ marginBottom: 0 }}>
