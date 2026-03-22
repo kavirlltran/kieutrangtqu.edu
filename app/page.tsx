@@ -68,6 +68,62 @@ type ExerciseSet = {
 const EXERCISE_STORAGE_KEY = "speechace_exercises_v1";
 const EXERCISE_MAX = 50;
 
+// ===== Multi-user localStorage =====
+const USER_PROFILES_KEY = "speechace_user_profiles_v1";
+const ACTIVE_USER_KEY = "speechace_active_user_v1";
+
+type UserProfile = {
+  id: string; // email-based
+  fullName: string;
+  email: string;
+  createdAt: number;
+};
+
+function loadUserProfiles(): UserProfile[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(USER_PROFILES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveUserProfiles(profiles: UserProfile[]) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(USER_PROFILES_KEY, JSON.stringify(profiles)); } catch {}
+}
+
+function loadActiveUserId(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(ACTIVE_USER_KEY) || "";
+}
+
+function saveActiveUserId(id: string) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(ACTIVE_USER_KEY, id); } catch {}
+}
+
+// mỗi user lưu exercises & answers riêng
+function userExKey(userId: string) { return `speechace_ex_${userId}`; }
+function userAnsKey(userId: string) { return `speechace_ans_${userId}`; }
+function userHistKey(userId: string) { return `speechace_hist_${userId}`; }
+
+function loadUserExercises(userId: string): ExerciseSet[] {
+  if (!userId || typeof window === "undefined") return [];
+  try { const r = localStorage.getItem(userExKey(userId)); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+function saveUserExercises(userId: string, items: ExerciseSet[]) {
+  if (!userId || typeof window === "undefined") return;
+  try { localStorage.setItem(userExKey(userId), JSON.stringify(items.slice(0, EXERCISE_MAX))); } catch {}
+}
+function loadUserAnswers(userId: string): Record<string, Record<string, any>> {
+  if (!userId || typeof window === "undefined") return {};
+  try { const r = localStorage.getItem(userAnsKey(userId)); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+function saveUserAnswers(userId: string, ans: Record<string, Record<string, any>>) {
+  if (!userId || typeof window === "undefined") return;
+  try { localStorage.setItem(userAnsKey(userId), JSON.stringify(ans)); } catch {}
+}
+
 function loadExercises(): ExerciseSet[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(EXERCISE_STORAGE_KEY);
@@ -482,6 +538,11 @@ export default function Page() {
   const [email, setEmail] = useState("");
   const [dialect, setDialect] = useState<Dialect>("en-us");
 
+  // ===== Multi-user session =====
+  const [activeUserId, setActiveUserId] = useState("");
+  const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+  const [userInfoLocked, setUserInfoLocked] = useState(false); // true = user đã lưu, đang trong session
+
   const [pronunciationScoreMode, setPronunciationScoreMode] = useState<"default" | "strict">("default");
   const [detectDialect, setDetectDialect] = useState(false);
 
@@ -678,7 +739,145 @@ export default function Page() {
     }));
   }
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+
+    // ===== Restore active user session =====
+    const profiles = loadUserProfiles();
+    setUserProfiles(profiles);
+
+    const savedId = loadActiveUserId();
+    if (savedId) {
+      const profile = profiles.find((p) => p.id === savedId);
+      if (profile) {
+        setFullName(profile.fullName);
+        setEmail(profile.email);
+        setActiveUserId(savedId);
+        setUserInfoLocked(true);
+
+        // load user-specific data
+        const exs = loadUserExercises(savedId);
+        if (exs.length) {
+          saveExercises(exs);
+          setExerciseVersion((v) => v + 1);
+        }
+        const ans = loadUserAnswers(savedId);
+        if (Object.keys(ans).length) setExerciseAnswers(ans);
+      }
+    }
+  }, []);
+
+  // ===== Auto-save exercises/answers per user =====
+  useEffect(() => {
+    if (!activeUserId) return;
+    saveUserExercises(activeUserId, exercises);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercises, activeUserId]);
+
+  useEffect(() => {
+    if (!activeUserId) return;
+    saveUserAnswers(activeUserId, exerciseAnswers);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exerciseAnswers, activeUserId]);
+
+  // ===== Save current user profile & lock session =====
+  function saveCurrentUser() {
+    const name = fullName.trim();
+    const em = email.trim();
+    if (!name || !em) return;
+
+    const id = em.toLowerCase().replace(/[^a-z0-9@._-]/gi, "_");
+
+    // save/update profile
+    const profiles = loadUserProfiles();
+    const existing = profiles.findIndex((p) => p.id === id);
+    const profile: UserProfile = { id, fullName: name, email: em, createdAt: Date.now() };
+    if (existing >= 0) {
+      profiles[existing] = profile;
+    } else {
+      profiles.push(profile);
+    }
+    saveUserProfiles(profiles);
+    setUserProfiles(profiles);
+
+    // set active
+    saveActiveUserId(id);
+    setActiveUserId(id);
+    setUserInfoLocked(true);
+
+    // save current data to this user
+    saveUserExercises(id, exercises);
+    saveUserAnswers(id, exerciseAnswers);
+  }
+
+  // ===== Switch to a different user =====
+  function switchToUser(userId: string) {
+    if (userId === activeUserId) return;
+
+    // save current user's data first
+    if (activeUserId) {
+      saveUserExercises(activeUserId, exercises);
+      saveUserAnswers(activeUserId, exerciseAnswers);
+    }
+
+    const profiles = loadUserProfiles();
+    const profile = profiles.find((p) => p.id === userId);
+    if (!profile) return;
+
+    // reset all task state (clean slate)
+    setTaskState({
+      reading: { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+      "open-ended": { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+      relevance: { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+    });
+    setSendOk(false);
+    setSendErr(null);
+
+    // load new user
+    setFullName(profile.fullName);
+    setEmail(profile.email);
+    setActiveUserId(userId);
+    saveActiveUserId(userId);
+    setUserInfoLocked(true);
+
+    // load user-specific exercises & answers
+    const exs = loadUserExercises(userId);
+    saveExercises(exs);
+    setExerciseVersion((v) => v + 1);
+
+    const ans = loadUserAnswers(userId);
+    setExerciseAnswers(ans);
+
+    setOpenExerciseId(exs[0]?.id || "");
+  }
+
+  // ===== Unlock to change user / create new =====
+  function logoutUser() {
+    // save current user's data
+    if (activeUserId) {
+      saveUserExercises(activeUserId, exercises);
+      saveUserAnswers(activeUserId, exerciseAnswers);
+    }
+
+    setUserInfoLocked(false);
+    setFullName("");
+    setEmail("");
+    setActiveUserId("");
+    saveActiveUserId("");
+
+    // reset task state
+    setTaskState({
+      reading: { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+      "open-ended": { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+      relevance: { result: null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+    });
+    saveExercises([]);
+    setExerciseVersion((v) => v + 1);
+    setExerciseAnswers({});
+    setOpenExerciseId("");
+    setSendOk(false);
+    setSendErr(null);
+  }
 
   // Đổi tab: reset DOM file input + reset state uploadedFile của tab đang vào
   useEffect(() => {
@@ -750,7 +949,7 @@ export default function Page() {
   }, []);
 
   function canStart() {
-    return fullName.trim() && email.trim();
+    return fullName.trim() && email.trim() && userInfoLocked;
   }
 
   function referenceText() {
@@ -944,7 +1143,7 @@ export default function Page() {
     resetRunState(task);
     taskAtRecordRef.current = task;
 
-    if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email trước khi bắt đầu." });
+    if (!canStart()) return updateTaskState({ err: "Bạn phải nhập Họ tên + Email rồi bấm 💾 Lưu thông tin trước khi bắt đầu." });
     if (task === "reading" && wordsCount(refText) < 1)
       return updateTaskState({ err: "Bạn phải nạp Reference text trước khi ghi âm." });
 
@@ -1258,6 +1457,11 @@ export default function Page() {
     try {
       setExerciseErr(null);
       setExerciseLoading(true);
+
+      if (!canStart()) {
+        setExerciseErr("Bạn phải nhập Họ tên + Email rồi bấm 💾 Lưu thông tin trước.");
+        return;
+      }
 
       // chỉ hỗ trợ reading/open-ended
       if (task === "relevance") {
@@ -2619,26 +2823,85 @@ export default function Page() {
           {/* User Info */}
           <div className="sidebarSection">Thông tin</div>
           <div style={{ padding: "0 4px", display: "grid", gap: 8 }}>
-            <div className="fieldGroup" style={{ marginBottom: 0 }}>
-              <label className="label">Họ tên *</label>
-              <input
-                className="input"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nguyễn Văn A"
-                disabled={busy || recording}
-              />
-            </div>
-            <div className="fieldGroup" style={{ marginBottom: 0 }}>
-              <label className="label">Email *</label>
-              <input
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                disabled={busy || recording}
-              />
-            </div>
+            {userInfoLocked ? (
+              /* ── Đã lưu: hiện thông tin + nút đổi user ── */
+              <>
+                <div style={{ padding: 10, borderRadius: 12, background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.12)" }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>👤 {fullName}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{email}</div>
+                </div>
+                <button
+                  className="btn3d btnTiny"
+                  onClick={logoutUser}
+                  disabled={busy || recording}
+                  style={{ width: "100%" }}
+                >
+                  🔄 Đổi người dùng
+                </button>
+                {userProfiles.length > 1 && (
+                  <select
+                    className="select"
+                    value={activeUserId}
+                    onChange={(e) => switchToUser(e.target.value)}
+                    disabled={busy || recording}
+                    style={{ fontSize: 12 }}
+                  >
+                    {userProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
+                    ))}
+                  </select>
+                )}
+              </>
+            ) : (
+              /* ── Chưa lưu: hiện form nhập ── */
+              <>
+                <div className="fieldGroup" style={{ marginBottom: 0 }}>
+                  <label className="label">Họ tên *</label>
+                  <input
+                    className="input"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    disabled={busy || recording}
+                  />
+                </div>
+                <div className="fieldGroup" style={{ marginBottom: 0 }}>
+                  <label className="label">Email *</label>
+                  <input
+                    className="input"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    disabled={busy || recording}
+                  />
+                </div>
+                <button
+                  className="btn3d btnPrimary"
+                  onClick={saveCurrentUser}
+                  disabled={!fullName.trim() || !email.trim() || busy || recording}
+                  style={{ width: "100%" }}
+                >
+                  💾 Lưu thông tin
+                </button>
+                {userProfiles.length > 0 && (
+                  <>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Hoặc chọn người dùng đã lưu:</div>
+                    <select
+                      className="select"
+                      value=""
+                      onChange={(e) => e.target.value && switchToUser(e.target.value)}
+                      disabled={busy || recording}
+                      style={{ fontSize: 12 }}
+                    >
+                      <option value="">— Chọn —</option>
+                      {userProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </>
+            )}
             <div className="fieldGroup" style={{ marginBottom: 0 }}>
               <label className="label">Dialect</label>
               <select className="select" value={dialect} onChange={(e) => setDialect(e.target.value as any)} disabled={busy || recording}>
@@ -2858,10 +3121,10 @@ export default function Page() {
                       type="button"
                       className="btn3d btnPrimary"
                       style={{ padding: "6px 12px", fontSize: 12 }}
-                      onClick={() => void sendToTelegram()}
-                      disabled={!result || !canStart() || busy || sending}
+                      onClick={() => setShowSubmitModal(true)}
+                      disabled={!hasAnyResult || !canStart() || busy || sending}
                     >
-                      {sending ? "📤 Đang gửi..." : "📤 Telegram"}
+                      {sending ? "📤 Đang gửi..." : "📤 Gửi bài tập"}
                     </button>
                     {sendOk && <span className="badge badgeSuccess">✅ Đã gửi</span>}
                   </div>
