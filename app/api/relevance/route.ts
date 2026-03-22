@@ -162,15 +162,14 @@ export async function POST(req: Request) {
       ? speechace.speech_score.score_issue_list
       : [];
 
-    // ===== Gemini AI cross-check =====
-    let geminiRelevance: boolean | null = null;
-    let geminiReason: string | null = null;
+    // ===== Gemini AI cross-check → ghi đè relevanceClass =====
+    let finalRelevanceClass = relevanceClass;
 
     if (transcript && relevanceContext) {
       const geminiResult = await geminiCheckRelevance(transcript, relevanceContext);
       if (geminiResult) {
-        geminiRelevance = geminiResult.relevant;
-        geminiReason = geminiResult.reason;
+        // Gemini ghi đè kết quả SpeechAce
+        finalRelevanceClass = geminiResult.relevant ? "TRUE" : "FALSE";
       }
     }
 
@@ -178,7 +177,7 @@ export async function POST(req: Request) {
       ok: true,
       task: "relevance",
       overall,
-      relevanceClass,
+      relevanceClass: finalRelevanceClass,
       transcript,
       ielts,
       pte,
@@ -188,9 +187,6 @@ export async function POST(req: Request) {
       dialect,
       audioKey,
       relevanceContext,
-      // Gemini cross-check results
-      geminiRelevance,
-      geminiReason,
       speechace,
     });
 

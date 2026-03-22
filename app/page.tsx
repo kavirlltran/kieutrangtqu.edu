@@ -2507,28 +2507,6 @@ export default function Page() {
               <div className="muted" style={{ marginTop: 10 }}>
                 Tip: nhắc lại keyword của đề ở mở bài, trả lời 2–3 ý chính, tránh kể lan man.
               </div>
-
-              {/* ===== Gemini AI Cross-check ===== */}
-              {result?.geminiRelevance != null && (
-                <div style={{
-                  marginTop: 12, padding: 12, borderRadius: 14,
-                  background: result.geminiRelevance ? "rgba(34,197,94,.08)" : "rgba(239,68,68,.08)",
-                  border: result.geminiRelevance ? "1px solid rgba(34,197,94,.2)" : "1px solid rgba(239,68,68,.2)",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 16 }}>🤖</span>
-                    <b style={{ fontSize: 13 }}>Gemini AI Cross-check</b>
-                    <span className={`relPill ${result.geminiRelevance ? "relTrue" : "relFalse"}`} style={{ marginLeft: "auto" }}>
-                      {result.geminiRelevance ? "TRUE" : "FALSE"}
-                    </span>
-                  </div>
-                  {result.geminiReason && (
-                    <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                      💬 {result.geminiReason}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ) : null}
 
