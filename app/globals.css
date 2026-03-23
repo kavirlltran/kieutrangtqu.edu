@@ -84,6 +84,19 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  position: relative;
+}
+
+/* Background image overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(13,13,26,0.88) 0%, rgba(13,13,26,0.92) 100%),
+    url("/bg.jpg") center/cover no-repeat fixed;
+  pointer-events: none;
 }
 
 /* ===== APP SHELL ===== */
