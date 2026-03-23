@@ -591,6 +591,7 @@ export default function Page() {
   const [sendOk, setSendOk] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [classCode, setClassCode] = useState(""); // lớp được chọn khi nộp bài
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // sidebar mobile
 
   const active = taskState[task];
   const result = active.result;
@@ -2888,7 +2889,11 @@ export default function Page() {
       }}
     >
       {/* ===== SIDEBAR ===== */}
-      <nav className="sidebar">
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div className="sidebarOverlay" onClick={() => setMobileMenuOpen(false)} />
+      )}
+      <nav className={`sidebar ${mobileMenuOpen ? "sidebarOpen" : ""}`}>
         <div className="sidebarInner">
           {/* Logo */}
           <div className="sidebarLogo">
@@ -2903,21 +2908,21 @@ export default function Page() {
           <div className="sidebarSection">Task</div>
           <button
             className={`sidebarItem ${task === "reading" ? "active" : ""}`}
-            onClick={() => { setHover(null); setClickPop(null); setTask("reading"); }}
+            onClick={() => { setHover(null); setClickPop(null); setTask("reading"); setMobileMenuOpen(false); }}
             disabled={busy || recording}
           >
             <span className="sidebarItemIcon">📘</span> Reading
           </button>
           <button
             className={`sidebarItem ${task === "open-ended" ? "active" : ""}`}
-            onClick={() => { setHover(null); setClickPop(null); setTask("open-ended"); }}
+            onClick={() => { setHover(null); setClickPop(null); setTask("open-ended"); setMobileMenuOpen(false); }}
             disabled={busy || recording}
           >
             <span className="sidebarItemIcon">🗣️</span> Open-ended
           </button>
           <button
             className={`sidebarItem ${task === "relevance" ? "active" : ""}`}
-            onClick={() => { setHover(null); setClickPop(null); setTask("relevance"); }}
+            onClick={() => { setHover(null); setClickPop(null); setTask("relevance"); setMobileMenuOpen(false); }}
             disabled={busy || recording}
           >
             <span className="sidebarItemIcon">🎯</span> Relevance
@@ -3054,6 +3059,13 @@ export default function Page() {
       <div className="mainContent">
         {/* Top Bar */}
         <header className="topBar">
+          <button
+            className="mobileMenuBtn"
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            aria-label="Menu"
+          >
+            {mobileMenuOpen ? "✕" : "☰"}
+          </button>
           <div className="topBarTitle">
             {task === "reading" ? "📘 Reading Practice" : task === "open-ended" ? "🗣️ Open-ended Speaking" : "🎯 Relevance Check"}
             {recording && (

@@ -1,0 +1,37 @@
+Mở file 
+
+app/page.tsx
+, tìm đoạn CLASS_LIST (khoảng dòng 75):
+
+typescript
+const CLASS_LIST = [
+  "10A1",
+  "10A2",
+  "10A3",
+  "11B1",
+  "11B2",
+];
+Thêm lớp mới vào mảng, ví dụ thêm 12C1:
+
+typescript
+const CLASS_LIST = [
+  "10A1",
+  "10A2",
+  "10A3",
+  "11B1",
+  "11B2",
+  "12C1",  // ← thêm ở đây
+];
+Push lên Git → Vercel tự deploy → dropdown hiện lớp mới.
+
+Nếu muốn lớp đó gửi bài vào đúng nhóm Telegram riêng, thì thêm bước 2: vào Vercel → Settings → Environment Variables → CLASS_CONFIG, thêm chatId:
+
+json
+[
+  {"code":"10A1","chatId":"-100xxx1"},
+  {"code":"10A2","chatId":"-100xxx2"},
+  {"code":"10A3","chatId":"-100xxx3"},
+  {"code":"11B1","chatId":"-100xxx4"},
+  {"code":"11B2","chatId":"-100xxx5"},
+  {"code":"12C1","chatId":"-100xxx6"}
+]
