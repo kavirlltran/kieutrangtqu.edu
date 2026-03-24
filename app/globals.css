@@ -80,10 +80,19 @@ html {
 body {
   font-family: var(--font);
   color: var(--text);
-  background: var(--bg);
+  /* ===== ANIMATED GRADIENT BACKGROUND ===== */
+  background: linear-gradient(-45deg, #0d0d1a, #1a1535, #0f1729, #12102e);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* ===== APP SHELL ===== */
@@ -180,12 +189,15 @@ body {
   background: transparent;
   width: 100%;
   text-align: left;
-  transition: background var(--tr-s), color var(--tr-s);
+  transition: background var(--tr-s), color var(--tr-s), box-shadow var(--tr-s);
 }
 
+/* ===== SIDEBAR GLOW HOVER ===== */
 .sidebarItem:hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(99, 102, 241, 0.12);
   color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.25),
+              0 0 12px rgba(99, 102, 241, 0.12);
 }
 
 .sidebarItem.active {
@@ -193,6 +205,8 @@ body {
   color: #fff;
   font-weight: 600;
   border: 1px solid rgba(99, 102, 241, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.45),
+              0 0 20px rgba(99, 102, 241, 0.18);
 }
 
 .sidebarItemIcon {
@@ -638,14 +652,18 @@ body {
 }
 
 /* =============================
-   CARDS
+   CARDS (Glassmorphism)
    ============================= */
 .card {
-  background: #1e1e35;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(26, 26, 46, 0.6);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: var(--r-xl);
   padding: 20px;
-  box-shadow: var(--sh-md);
+  box-shadow: var(--sh-md),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation: fadeUp 0.4s ease-out;
 }
 
 .cardTitle {
@@ -1019,24 +1037,36 @@ body {
   font-weight: 900;
   letter-spacing: -0.04em;
   border: 4px solid;
+  animation: scorePopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes scorePopIn {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
 }
 
 .scoreRingGood {
   color: #15803d;
   border-color: #22c55e;
   background: rgba(34, 197, 94, 0.10);
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.25),
+              0 0 8px rgba(34, 197, 94, 0.15);
 }
 
 .scoreRingWarn {
   color: #b45309;
   border-color: #f59e0b;
   background: rgba(245, 158, 11, 0.10);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.25),
+              0 0 8px rgba(245, 158, 11, 0.15);
 }
 
 .scoreRingBad {
   color: #b91c1c;
   border-color: #ef4444;
   background: rgba(239, 68, 68, 0.10);
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.25),
+              0 0 8px rgba(239, 68, 68, 0.15);
 }
 
 .scoreRingNA {
@@ -1055,12 +1085,29 @@ body {
 }
 
 .metricCardPro {
-  background: var(--surface2);
+  background: rgba(19, 19, 30, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   padding: 12px;
   border-left: 4px solid var(--accent);
+  animation: fadeUp 0.4s ease-out both;
+  transition: transform var(--tr-s), box-shadow var(--tr-s);
 }
+
+.metricCardPro:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-sm);
+}
+
+/* Stagger animation for metrics */
+.metricCardPro:nth-child(1) { animation-delay: 0ms; }
+.metricCardPro:nth-child(2) { animation-delay: 60ms; }
+.metricCardPro:nth-child(3) { animation-delay: 120ms; }
+.metricCardPro:nth-child(4) { animation-delay: 180ms; }
+.metricCardPro:nth-child(5) { animation-delay: 240ms; }
+.metricCardPro:nth-child(6) { animation-delay: 300ms; }
 
 .metricTop {
   display: flex;
@@ -1501,4 +1548,52 @@ body {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.02em;
+}
+
+/* =============================
+   MICRO-ANIMATIONS
+   ============================= */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Quick card fade */
+.quickCard {
+  animation: fadeUp 0.35s ease-out;
+}
+
+/* TopBar badge pulse when score exists */
+.topBarActions .badgeAccent {
+  animation: badgePulse 2s ease-in-out 1;
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+
+/* =============================
+   ACCESSIBILITY: Reduced Motion
+   ============================= */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Disable heavy gradient animation on mobile to save battery */
+@media (max-width: 480px) {
+  body {
+    animation: none;
+    background-size: 100% 100%;
+  }
 }
