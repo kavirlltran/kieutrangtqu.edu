@@ -835,6 +835,7 @@ export default function Page() {
     if (!name || !em) return;
 
     const id = em.toLowerCase().replace(/[^a-z0-9@._-]/gi, "_");
+    const isNewUser = id !== activeUserId;
 
     // save/update profile
     const profiles = loadUserProfiles();
@@ -848,14 +849,44 @@ export default function Page() {
     saveUserProfiles(profiles);
     setUserProfiles(profiles);
 
+    // save OLD user's data before switching
+    if (activeUserId && isNewUser) {
+      saveUserExercises(activeUserId, exercises);
+      saveUserAnswers(activeUserId, exerciseAnswers);
+      const curResults: PersistedResults = {};
+      for (const t of ["reading", "open-ended", "relevance"] as Task[]) {
+        if (taskState[t].result) curResults[t] = taskState[t].result;
+      }
+      saveUserResults(activeUserId, curResults);
+    }
+
     // set active
     saveActiveUserId(id);
     setActiveUserId(id);
     setUserInfoLocked(true);
 
-    // save current data to this user
-    saveUserExercises(id, exercises);
-    saveUserAnswers(id, exerciseAnswers);
+    if (isNewUser) {
+      // NEW user: load their data (empty for brand new, or existing if they used before)
+      const exs = loadUserExercises(id);
+      saveExercises(exs);
+      setExerciseVersion((v) => v + 1);
+      setExerciseAnswers(loadUserAnswers(id));
+      setOpenExerciseId(exs[0]?.id || "");
+
+      // reset task state then restore if they have saved results
+      const savedResults = loadUserResults(id);
+      setTaskState({
+        reading: { result: savedResults.reading || null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+        "open-ended": { result: savedResults["open-ended"] || null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+        relevance: { result: savedResults.relevance || null, err: null, audioUrl: null, audioUrlAt: null, uploadedFile: null },
+      });
+      setSendOk(false);
+      setSendErr(null);
+    } else {
+      // SAME user (re-save): just persist current data
+      saveUserExercises(id, exercises);
+      saveUserAnswers(id, exerciseAnswers);
+    }
   }
 
   // ===== Switch to a different user =====
@@ -2933,78 +2964,117 @@ export default function Page() {
           {/* User Info */}
           <div className="sidebarSection">Thông tin</div>
           <div style={{ padding: "0 4px", display: "grid", gap: 8 }}>
-            <div className="fieldGroup" style={{ marginBottom: 0 }}>
-              <label className="label">Họ tên *</label>
-              <input
-                className="input"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nguyễn Văn A"
-                disabled={busy || recording}
-              />
-            </div>
-            <div className="fieldGroup" style={{ marginBottom: 0 }}>
-              <label className="label">Email *</label>
-              <input
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                disabled={busy || recording}
-              />
-            </div>
-            <button
-              className="btn3d btnPrimary"
-              onClick={saveCurrentUser}
-              disabled={!fullName.trim() || !email.trim() || busy || recording}
-              style={{ width: "100%" }}
-            >
-              💾 Lưu thông tin
-            </button>
-            {/* Danh sách người dùng đã lưu */}
-            {userProfiles.length > 0 && (
-              <div>
-                <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Người dùng đã lưu:</div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <select
-                    className="select"
-                    value={activeUserId}
-                    onChange={(e) => e.target.value && switchToUser(e.target.value)}
-                    disabled={busy || recording}
-                    style={{ flex: 1, fontSize: 12 }}
-                  >
-                    <option value="">— Chọn —</option>
-                    {userProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
-                    ))}
-                  </select>
+            {userInfoLocked ? (
+              /* ===== Compact view when logged in ===== */
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: "50%",
+                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 14, flexShrink: 0, color: "#fff", fontWeight: 700
+                  }}>
+                    {fullName.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: "#fff", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fullName}</div>
+                    <div style={{ color: "var(--side-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</div>
+                  </div>
                   <button
                     className="btn3d btnTiny"
-                    title="Xóa người dùng đang chọn"
-                    disabled={!activeUserId || busy || recording}
-                    onClick={() => {
-                      if (!activeUserId) return;
-                      if (!confirm(`Xóa "${userProfiles.find(p => p.id === activeUserId)?.fullName}"?`)) return;
-                      const newProfiles = userProfiles.filter(p => p.id !== activeUserId);
-                      saveUserProfiles(newProfiles);
-                      setUserProfiles(newProfiles);
-                      // xóa data
-                      try { localStorage.removeItem(userExKey(activeUserId)); } catch {}
-                      try { localStorage.removeItem(userAnsKey(activeUserId)); } catch {}
-                      try { localStorage.removeItem(userHistKey(activeUserId)); } catch {}
-                      try { localStorage.removeItem(userResultsKey(activeUserId)); } catch {}
-                      setActiveUserId("");
-                      saveActiveUserId("");
-                      setUserInfoLocked(false);
-                      setFullName("");
-                      setEmail("");
-                    }}
-                    style={{ padding: "6px 10px", fontSize: 12 }}
-                  >
-                    🗑️
-                  </button>
+                    onClick={logoutUser}
+                    disabled={busy || recording}
+                    title="Đổi người dùng"
+                    style={{ padding: "4px 8px", fontSize: 11 }}
+                  >✏️</button>
                 </div>
-              </div>
+                {/* User switcher dropdown */}
+                {userProfiles.length > 1 && (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <select
+                      className="select"
+                      value={activeUserId}
+                      onChange={(e) => e.target.value && switchToUser(e.target.value)}
+                      disabled={busy || recording}
+                      style={{ flex: 1, fontSize: 11 }}
+                    >
+                      {userProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn3d btnTiny btnDanger"
+                      title="Xóa người dùng đang chọn"
+                      disabled={!activeUserId || busy || recording}
+                      onClick={() => {
+                        if (!activeUserId) return;
+                        if (!confirm(`Xóa "${userProfiles.find(p => p.id === activeUserId)?.fullName}"?`)) return;
+                        const newProfiles = userProfiles.filter(p => p.id !== activeUserId);
+                        saveUserProfiles(newProfiles);
+                        setUserProfiles(newProfiles);
+                        try { localStorage.removeItem(userExKey(activeUserId)); } catch {}
+                        try { localStorage.removeItem(userAnsKey(activeUserId)); } catch {}
+                        try { localStorage.removeItem(userHistKey(activeUserId)); } catch {}
+                        try { localStorage.removeItem(userResultsKey(activeUserId)); } catch {}
+                        logoutUser();
+                      }}
+                      style={{ padding: "4px 8px", fontSize: 11 }}
+                    >🗑️</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* ===== Full form when NOT logged in ===== */
+              <>
+                <div className="fieldGroup" style={{ marginBottom: 0 }}>
+                  <label className="label">Họ tên *</label>
+                  <input
+                    className="input"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    disabled={busy || recording}
+                  />
+                </div>
+                <div className="fieldGroup" style={{ marginBottom: 0 }}>
+                  <label className="label">Email *</label>
+                  <input
+                    className="input"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    disabled={busy || recording}
+                  />
+                </div>
+                <button
+                  className="btn3d btnPrimary"
+                  onClick={saveCurrentUser}
+                  disabled={!fullName.trim() || !email.trim() || busy || recording}
+                  style={{ width: "100%" }}
+                >
+                  💾 Lưu thông tin
+                </button>
+                {/* Danh sách người dùng đã lưu */}
+                {userProfiles.length > 0 && (
+                  <div>
+                    <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Người dùng đã lưu:</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <select
+                        className="select"
+                        value={activeUserId}
+                        onChange={(e) => e.target.value && switchToUser(e.target.value)}
+                        disabled={busy || recording}
+                        style={{ flex: 1, fontSize: 12 }}
+                      >
+                        <option value="">— Chọn —</option>
+                        {userProfiles.map((p) => (
+                          <option key={p.id} value={p.id}>{p.fullName} ({p.email})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div className="fieldGroup" style={{ marginBottom: 0 }}>
               <label className="label">Dialect</label>
@@ -3079,6 +3149,16 @@ export default function Page() {
             {busy && <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />}
             {typeof overall === "number" && (
               <span className="badge badgeAccent">Overall: {overall.toFixed(1)}</span>
+            )}
+            {userInfoLocked && fullName && (
+              <span
+                className="badge badgeAccent"
+                style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4, padding: "4px 12px" }}
+                onClick={logoutUser}
+                title="Bấm để đổi người dùng"
+              >
+                👤 {fullName}
+              </span>
             )}
           </div>
         </header>
