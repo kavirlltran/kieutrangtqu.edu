@@ -1767,46 +1767,6 @@ export default function Page() {
               ) : null}
             </div>
           ) : null}
-
-          {hover ? (
-            <div
-              style={{
-                position: "fixed",
-                left: clampLeft(hover.x + 12, 280),
-                top: clampTop(hover.y + 12, 200),
-                width: 260,
-                borderRadius: 16,
-                border: "1px solid var(--border)",
-                background: "rgba(255,255,255,.98)",
-                boxShadow: "0 18px 40px rgba(15,23,42,.18)",
-                padding: 10,
-                zIndex: 9998,
-                pointerEvents: "none",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                <div style={{ fontWeight: 900 }}>{hover.w.word}</div>
-                <span className="badge accentBadge">
-                  {hover.w.quality == null ? "n/a" : (hover.w.quality as number).toFixed(0)}
-                </span>
-              </div>
-
-              <div className="muted" style={{ marginTop: 6 }}>
-                {formatPhonesForTooltip(hover.w) || "(no phone detail)"}
-              </div>
-
-              <div className="muted" style={{ marginTop: 6 }}>
-                Dịch:{" "}
-                <b>
-                  {getMeaning(hover.w.word) || (translatingKey === normalizeWord(hover.w.word) ? "đang tra…" : "—")}
-                </b>
-              </div>
-
-              <div className="muted" style={{ marginTop: 8 }}>
-                click vào từ để nghe lại đúng từ
-              </div>
-            </div>
-          ) : null}
         </>,
         document.body
       )
@@ -2667,7 +2627,7 @@ export default function Page() {
 
           {task === "reading" ? (
             <>
-              <div style={{ fontWeight: 900, marginBottom: 8, marginTop: 12 }}>Highlight theo word-score</div>
+              <div style={{ fontWeight: 900, marginBottom: 8, marginTop: 12 }}>Highlight theo word-score <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>(Click vào từ để nghe lại đúng từ)</span></div>
 
               {!hasHighlight ? (
                 <div className="muted">
@@ -2709,11 +2669,6 @@ export default function Page() {
                         setClickPop({ w, x: e.clientX, y: e.clientY });
                         void playWord(w);
                       }}
-                      onMouseEnter={(e) => {
-                        if (!w) return;
-                        setHover({ w, x: e.clientX, y: e.clientY });
-                      }}
-                      onMouseLeave={() => setHover(null)}
                     >
                       {t.text}
                     </span>
