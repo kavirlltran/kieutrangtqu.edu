@@ -1347,11 +1347,18 @@ export default function Page() {
       setBusy(true);
       updateTaskState({ err: null }, t);
 
-      const up = await fetch("/api/upload-url", {
+      const uploadReq = await fetch("/api/upload-url", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ contentType: audioBlob.type || "application/octet-stream" }),
-      }).then((r) => r.json());
+      });
+      const uploadText = await uploadReq.text();
+      let up: any;
+      try {
+        up = JSON.parse(uploadText);
+      } catch (e) {
+        throw new Error(`Upload API returned non-JSON: ${uploadText.slice(0, 100)}...`);
+      }
 
       if (!up?.url || !up?.key) throw new Error(up?.error || "Cannot get upload url");
 
@@ -1886,8 +1893,8 @@ export default function Page() {
             Chưa có bài tập. Bấm “Tạo bài tập mới” ở menu trái.
           </div>
         ) : (
-          <div className="exSplit">
-            {/* Cột trái: danh sách bài tập */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Cột trên: danh sách bài tập */}
             <div className="exList">
               <div style={{ display: "grid", gap: 10 }}>
                 {exercises.map((ex) => (
@@ -2930,7 +2937,7 @@ export default function Page() {
           <div className="sidebarLogo">
             <div className="sidebarLogoIcon">🎙</div>
             <div>
-              <div className="sidebarLogoText">SpeechAce</div>
+              <div className="sidebarLogoText">KieuTrangAI</div>
               <div className="sidebarLogoSub">AI Practice</div>
             </div>
           </div>
@@ -3165,7 +3172,7 @@ export default function Page() {
 
         {/* Page Body */}
         <div className="pageContent">
-          <div className="twoCol">
+          <div className="singleCol">
             {/* LEFT COLUMN: Input / Text */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
@@ -3244,59 +3251,83 @@ export default function Page() {
                 </div>
               )}
 
-              {/* Recording Card */}
-              <div className="card">
-                <div className="cardTitle">
-                  <div className="cardTitleIcon">🎙</div>
-                  Ghi âm / Upload
-                  {mounted && <span className="badge badgeMuted" style={{ marginLeft: "auto", fontSize: 11 }} suppressHydrationWarning>{recorderName}</span>}
-                </div>
-
-                <div className="row" style={{ gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              {/* Compact Recording Bar */}
+              <div className="card" style={{ padding: "12px 20px", display: "flex", flexDirection: "row", alignItems: "center", gap: 16, background: "rgba(10, 10, 20, 0.4)", backdropFilter: "blur(20px)", border: "1px solid rgba(0, 212, 255, 0.1)" }}>
+                
+                {/* Nút Ghi Âm & Timer (Cột trái) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <button
-                    className={`btn3d btnRecord ${recording ? "recording" : "btnPrimary"}`}
                     onClick={() => recording ? void stopRec() : void startRec()}
                     disabled={busy}
-                    style={{ flex: 1, minWidth: 140 }}
-                  >
-                    {recording ? `⏹ Dừng (${seconds}s)` : "🎙 Bắt đầu ghi"}
-                  </button>
-                </div>
-
-                {busy && (
-                  <div className="alert alertInfo" style={{ marginBottom: 10 }}>⏳ Đang upload &amp; chấm điểm...</div>
-                )}
-
-                <div className="divider" />
-
-                <div className="fieldGroup" style={{ marginBottom: 0 }}>
-                  <label className="label">Upload file audio (mp3/wav/webm…)</label>
-                  <input
-                    ref={fileInputRef}
-                    key={`file-${task}`}
-                    className="input"
-                    type="file"
-                    accept="audio/*"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] || null;
-                      resetRunState(task);
-                      updateTaskState({ uploadedFile: f }, task);
+                    suppressHydrationWarning
+                    type="button"
+                    style={{
+                      width: 48, height: 48, borderRadius: "50%",
+                      border: "none", cursor: busy ? "not-allowed" : "pointer",
+                      background: recording ? "linear-gradient(135deg, #ef4444, #f97316)" : "linear-gradient(135deg, #00d4ff, #8b5cf6)",
+                      boxShadow: recording ? "0 0 20px rgba(239, 68, 68, 0.5)" : "0 0 15px rgba(0, 212, 255, 0.3)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "#fff", fontSize: 20, transition: "transform 0.2s",
+                      transform: recording ? "scale(1.05)" : "scale(1)"
                     }}
-                    disabled={busy || recording}
-                  />
-                  {uploadedFile && <div className="muted" style={{ marginTop: 4 }}>✅ {uploadedFile.name}</div>}
+                    title="Ghi âm"
+                  >
+                    {recording ? "⏹" : "🎤"}
+                  </button>
+                  <div style={{ fontSize: 28, fontWeight: 300, letterSpacing: 1, fontFamily: "monospace", color: recording ? "#ef4444" : "var(--text)", minWidth: 80 }} suppressHydrationWarning>
+                    {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
+                  </div>
                 </div>
-                <button className="btn3d btnPrimary" onClick={() => void scoreUploadedFile()} disabled={busy || recording || !uploadedFile} style={{ width: "100%", marginTop: 10 }}>
-                  Chấm file upload
-                </button>
+
+                {/* Sóng âm giả lập mini (Giữa) */}
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 3, height: 24, opacity: recording ? 1 : 0.15 }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, background: recording ? "#ef4444" : "#00d4ff", borderRadius: 2, height: recording ? `${20 + Math.random() * 80}%` : "20%", transition: "height 0.1s" }} />
+                  ))}
+                </div>
+
+                {/* Nút Phụ (Cột phải) */}
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <input
+                      ref={fileInputRef}
+                      key={`file-${task}`}
+                      type="file"
+                      accept="audio/*"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        resetRunState(task);
+                        updateTaskState({ uploadedFile: f }, task);
+                      }}
+                  />
+                  {uploadedFile ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className="muted" style={{ fontSize: 12, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uploadedFile.name}</span>
+                      <button type="button" className="btn3d btnPrimary" disabled={busy || recording} onClick={() => void scoreUploadedFile()} style={{ padding: "8px 16px", fontSize: 12, borderRadius: 8 }}>
+                        ✨ Chấm ngay
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn3d" disabled={busy || recording} onClick={() => fileInputRef.current?.click()} style={{ background: "transparent", border: "1px dashed rgba(255,255,255,0.2)", color: "var(--text2)", padding: "8px 16px", fontSize: 13, borderRadius: 8 }}>
+                      📁 Tải Audio lên
+                    </button>
+                  )}
+                </div>
+
               </div>
-
-              {err && <div className="alert alertErr">⚠ {err}</div>}
+              
+              {busy && (
+                <div className="alert alertInfo" style={{ padding: "8px 12px", fontSize: 13 }}>⏳ Đang upload & tiến hành chấm điểm. Vui lòng đợi...</div>
+              )}
+              {err && <div className="alert alertErr" style={{ padding: "8px 12px", fontSize: 13 }}>⚠ {err}</div>}
             </div>
+          </div>
+        </div>
+      </div>
 
-            {/* RIGHT COLUMN: Results */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Results Header */}
+      {/* ===== RIGHT PANEL (Column 3) ===== */}
+      <aside className="insightPanel">
+            {/* Results Header */}
               <div className="card">
                 <div className="sectionHeader">
                   <div>
@@ -3324,28 +3355,65 @@ export default function Page() {
                 {sendErr && <div className="alert alertErr">{sendErr}</div>}
 
                 {rightTab === "exercises" ? null : (
-                  /* Score overview ring */
+                  /* 2x3 Circular Score Metrics Grid */
                   typeof overall === "number" ? (
-                    <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-                      <div className="scoreRingWrap">
-                        <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" :
-                          overall >= 60 ? "scoreRingWarn" : "scoreRingBad"
-                          }`}>{overall.toFixed(0)}</div>
-                        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Overall</div>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div className="metricsGrid">
-                          <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
-                          <Metric label="Fluency" value={scoreObj?.fluency} />
-                          {task !== "reading" && <Metric label="Grammar" value={scoreObj?.grammar} />}
-                          {task !== "reading" && <Metric label="Coherence" value={scoreObj?.coherence} />}
-                          {task !== "reading" && <Metric label="Vocab" value={scoreObj?.vocab} />}
+                    <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 12, flexWrap: "wrap", justifyContent: "center" }}>
+                        <div className="metricsGrid" style={{ width: "100%", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                          
+                          {/* OVERALL */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" : overall >= 60 ? "scoreRingWarn" : "scoreRingBad"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+                              {overall.toFixed(0)}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>OVERALL</div>
+                          </div>
+
+                          {/* PRONUNCIATION */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className={`scoreRing ${scoreObj?.pronunciation >= 80 ? "scoreRingGood" : scoreObj?.pronunciation >= 60 ? "scoreRingWarn" : scoreObj?.pronunciation != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+                              {scoreObj?.pronunciation != null ? Number(scoreObj.pronunciation).toFixed(0) : "n/a"}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>PRONUNCIATION</div>
+                          </div>
+
+                          {/* FLUENCY */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className={`scoreRing ${scoreObj?.fluency >= 80 ? "scoreRingGood" : scoreObj?.fluency >= 60 ? "scoreRingWarn" : scoreObj?.fluency != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+                              {scoreObj?.fluency != null ? Number(scoreObj.fluency).toFixed(0) : "n/a"}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>FLUENCY</div>
+                          </div>
+
+                          {/* GRAMMAR */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className={`scoreRing ${scoreObj?.grammar >= 80 ? "scoreRingGood" : scoreObj?.grammar >= 60 ? "scoreRingWarn" : scoreObj?.grammar != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+                              {task === "reading" ? "n/a" : scoreObj?.grammar != null ? Number(scoreObj.grammar).toFixed(0) : "n/a"}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>GRAMMAR</div>
+                          </div>
+
+                          {/* COHERENCE */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className={`scoreRing ${scoreObj?.coherence >= 80 ? "scoreRingGood" : scoreObj?.coherence >= 60 ? "scoreRingWarn" : scoreObj?.coherence != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+                              {task === "reading" ? "n/a" : scoreObj?.coherence != null ? Number(scoreObj.coherence).toFixed(0) : "n/a"}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>COHERENCE</div>
+                          </div>
+
+                          {/* VOCAB */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className={`scoreRing ${scoreObj?.vocab >= 80 ? "scoreRingGood" : scoreObj?.vocab >= 60 ? "scoreRingWarn" : scoreObj?.vocab != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+                              {task === "reading" ? "n/a" : scoreObj?.vocab != null ? Number(scoreObj.vocab).toFixed(0) : "n/a"}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>VOCABULARY</div>
+                          </div>
+
                         </div>
-                      </div>
                     </div>
                   ) : (
                     !busy && result ? null : (
-                      <div className="muted" style={{ marginTop: 12, padding: "20px 0", textAlign: "center" }}>
+                      <div className="muted" style={{ marginTop: 12, padding: "40px 0", textAlign: "center", display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontSize: 40, opacity: 0.2 }}>⭕</div>
                         {busy ? "⏳ Đang chấm điểm..." : "Chưa có kết quả. Hãy ghi âm hoặc upload audio."}
                       </div>
                     )
@@ -3357,10 +3425,8 @@ export default function Page() {
               <div className="card" style={{ padding: rightTab === "exercises" ? 16 : 0, border: rightTab === "exercises" ? undefined : "none", background: rightTab === "exercises" ? undefined : "transparent", boxShadow: rightTab === "exercises" ? undefined : "none" }}>
                 {rightTab === "exercises" ? renderExercisesPanel() : scorePanel}
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </aside>
+
 
       {/* ===== SUBMIT CONFIRMATION MODAL ===== */}
       {showSubmitModal && mounted && createPortal(
