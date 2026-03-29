@@ -2713,10 +2713,6 @@ export default function Page() {
                         if (!w) return;
                         setHover({ w, x: e.clientX, y: e.clientY });
                       }}
-                      onMouseMove={(e) => {
-                        if (!w) return;
-                        setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : { w, x: e.clientX, y: e.clientY }));
-                      }}
                       onMouseLeave={() => setHover(null)}
                     >
                       {t.text}
@@ -3361,7 +3357,7 @@ export default function Page() {
                         <div className="metricsGrid" style={{ width: "100%", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                           
                           {/* OVERALL */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
                             <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" : overall >= 60 ? "scoreRingWarn" : "scoreRingBad"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {overall.toFixed(0)}
                             </div>
@@ -3369,7 +3365,7 @@ export default function Page() {
                           </div>
 
                           {/* PRONUNCIATION */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
                             <div className={`scoreRing ${scoreObj?.pronunciation >= 80 ? "scoreRingGood" : scoreObj?.pronunciation >= 60 ? "scoreRingWarn" : scoreObj?.pronunciation != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {scoreObj?.pronunciation != null ? Number(scoreObj.pronunciation).toFixed(0) : "n/a"}
                             </div>
@@ -3377,7 +3373,7 @@ export default function Page() {
                           </div>
 
                           {/* FLUENCY */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
                             <div className={`scoreRing ${scoreObj?.fluency >= 80 ? "scoreRingGood" : scoreObj?.fluency >= 60 ? "scoreRingWarn" : scoreObj?.fluency != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {scoreObj?.fluency != null ? Number(scoreObj.fluency).toFixed(0) : "n/a"}
                             </div>
@@ -3385,7 +3381,7 @@ export default function Page() {
                           </div>
 
                           {/* GRAMMAR */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
                             <div className={`scoreRing ${scoreObj?.grammar >= 80 ? "scoreRingGood" : scoreObj?.grammar >= 60 ? "scoreRingWarn" : scoreObj?.grammar != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {task === "reading" ? "n/a" : scoreObj?.grammar != null ? Number(scoreObj.grammar).toFixed(0) : "n/a"}
                             </div>
@@ -3393,7 +3389,7 @@ export default function Page() {
                           </div>
 
                           {/* COHERENCE */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
                             <div className={`scoreRing ${scoreObj?.coherence >= 80 ? "scoreRingGood" : scoreObj?.coherence >= 60 ? "scoreRingWarn" : scoreObj?.coherence != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {task === "reading" ? "n/a" : scoreObj?.coherence != null ? Number(scoreObj.coherence).toFixed(0) : "n/a"}
                             </div>
@@ -3401,7 +3397,7 @@ export default function Page() {
                           </div>
 
                           {/* VOCAB */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
                             <div className={`scoreRing ${scoreObj?.vocab >= 80 ? "scoreRingGood" : scoreObj?.vocab >= 60 ? "scoreRingWarn" : scoreObj?.vocab != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {task === "reading" ? "n/a" : scoreObj?.vocab != null ? Number(scoreObj.vocab).toFixed(0) : "n/a"}
                             </div>
