@@ -2930,6 +2930,16 @@ export default function Page() {
         setClickPop(null);
       }}
     >
+      {/* ===== VIDEO BACKGROUND ===== */}
+      <video
+        autoPlay muted loop playsInline
+        style={{
+          position: "fixed", inset: 0, width: "100vw", height: "100vh",
+          objectFit: "cover", zIndex: -1, opacity: 0.3, pointerEvents: "none",
+        }}
+      >
+        <source src="/270341.mp4" type="video/mp4" />
+      </video>
       {/* ===== SIDEBAR ===== */}
       {/* Mobile overlay */}
       {mobileMenuOpen && (
@@ -2939,21 +2949,7 @@ export default function Page() {
         <div className="sidebarInner">
           {/* Logo */}
           <div className="sidebarLogo">
-            <div className="sidebarLogoIcon" style={{ overflow: "hidden", padding: 0 }}>
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="kGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor="#00d4ff" />
-                    <stop offset="50%" stopColor="#8b5cf6" />
-                    <stop offset="100%" stopColor="#ec4899" />
-                  </linearGradient>
-                  <filter id="kShadow">
-                    <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#00d4ff" floodOpacity="0.5" />
-                  </filter>
-                </defs>
-                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="url(#kGrad)" filter="url(#kShadow)" fontFamily="Inter, sans-serif" fontWeight="900" fontStyle="italic" fontSize="28" letterSpacing="-1">K</text>
-              </svg>
-            </div>
+            <img src="/ChatGPT Image 22_43_36 29 thg 3, 2026.png" alt="K" style={{ width: 40, height: 40, borderRadius: 14, objectFit: "cover", flexShrink: 0 }} />
             <div>
               <div className="sidebarLogoText">KieuTrangAI</div>
               <div className="sidebarLogoSub">AI Practice</div>
