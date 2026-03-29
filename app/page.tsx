@@ -1779,6 +1779,59 @@ export default function Page() {
       ? speechace?.text_score?.speechace_score ?? speechace?.speechace_score ?? null
       : speechace?.speech_score?.speechace_score ?? speechace?.speechace_score ?? null;
 
+  // ★ Memoize score metrics grid so it does NOT re-render when clickPop/other unrelated state changes
+  const memoizedScoreGrid = useMemo(() => {
+    if (typeof overall !== "number") return null;
+    return (
+      <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 12, flexWrap: "wrap", justifyContent: "center" }}>
+        <div className="metricsGrid" style={{ width: "100%", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {/* OVERALL */}
+          <div className="scoreMetricCard">
+            <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" : overall >= 60 ? "scoreRingWarn" : "scoreRingBad"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+              {overall.toFixed(0)}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>OVERALL</div>
+          </div>
+          {/* PRONUNCIATION */}
+          <div className="scoreMetricCard">
+            <div className={`scoreRing ${scoreObj?.pronunciation >= 80 ? "scoreRingGood" : scoreObj?.pronunciation >= 60 ? "scoreRingWarn" : scoreObj?.pronunciation != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+              {scoreObj?.pronunciation != null ? Number(scoreObj.pronunciation).toFixed(0) : "n/a"}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>PRONUNCIATION</div>
+          </div>
+          {/* FLUENCY */}
+          <div className="scoreMetricCard">
+            <div className={`scoreRing ${scoreObj?.fluency >= 80 ? "scoreRingGood" : scoreObj?.fluency >= 60 ? "scoreRingWarn" : scoreObj?.fluency != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+              {scoreObj?.fluency != null ? Number(scoreObj.fluency).toFixed(0) : "n/a"}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>FLUENCY</div>
+          </div>
+          {/* GRAMMAR */}
+          <div className="scoreMetricCard">
+            <div className={`scoreRing ${scoreObj?.grammar >= 80 ? "scoreRingGood" : scoreObj?.grammar >= 60 ? "scoreRingWarn" : scoreObj?.grammar != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+              {task === "reading" ? "n/a" : scoreObj?.grammar != null ? Number(scoreObj.grammar).toFixed(0) : "n/a"}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>GRAMMAR</div>
+          </div>
+          {/* COHERENCE */}
+          <div className="scoreMetricCard">
+            <div className={`scoreRing ${scoreObj?.coherence >= 80 ? "scoreRingGood" : scoreObj?.coherence >= 60 ? "scoreRingWarn" : scoreObj?.coherence != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+              {task === "reading" ? "n/a" : scoreObj?.coherence != null ? Number(scoreObj.coherence).toFixed(0) : "n/a"}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>COHERENCE</div>
+          </div>
+          {/* VOCAB */}
+          <div className="scoreMetricCard">
+            <div className={`scoreRing ${scoreObj?.vocab >= 80 ? "scoreRingGood" : scoreObj?.vocab >= 60 ? "scoreRingWarn" : scoreObj?.vocab != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
+              {task === "reading" ? "n/a" : scoreObj?.vocab != null ? Number(scoreObj.vocab).toFixed(0) : "n/a"}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>VOCABULARY</div>
+          </div>
+        </div>
+      </div>
+    );
+  }, [overall, scoreObj, task]);
+
   const ieltsObj =
     task === "reading"
       ? speechace?.text_score?.ielts_score ?? speechace?.ielts_score ?? null
@@ -2886,7 +2939,21 @@ export default function Page() {
         <div className="sidebarInner">
           {/* Logo */}
           <div className="sidebarLogo">
-            <div className="sidebarLogoIcon" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 900, fontSize: 22, fontStyle: "italic", letterSpacing: "-0.04em", color: "#fff" }}>K</div>
+            <div className="sidebarLogoIcon" style={{ overflow: "hidden", padding: 0 }}>
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="kGrad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#00d4ff" />
+                    <stop offset="50%" stopColor="#8b5cf6" />
+                    <stop offset="100%" stopColor="#ec4899" />
+                  </linearGradient>
+                  <filter id="kShadow">
+                    <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#00d4ff" floodOpacity="0.5" />
+                  </filter>
+                </defs>
+                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="url(#kGrad)" filter="url(#kShadow)" fontFamily="Inter, sans-serif" fontWeight="900" fontStyle="italic" fontSize="28" letterSpacing="-1">K</text>
+              </svg>
+            </div>
             <div>
               <div className="sidebarLogoText">KieuTrangAI</div>
               <div className="sidebarLogoSub">AI Practice</div>
@@ -3306,61 +3373,9 @@ export default function Page() {
                 {sendErr && <div className="alert alertErr">{sendErr}</div>}
 
                 {rightTab === "exercises" ? null : (
-                  /* 2x3 Circular Score Metrics Grid */
+                  /* 2x3 Circular Score Metrics Grid — MEMOIZED to prevent flicker */
                   typeof overall === "number" ? (
-                    <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 12, flexWrap: "wrap", justifyContent: "center" }}>
-                        <div className="metricsGrid" style={{ width: "100%", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                          
-                          {/* OVERALL */}
-                          <div className="scoreMetricCard">
-                            <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" : overall >= 60 ? "scoreRingWarn" : "scoreRingBad"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
-                              {overall.toFixed(0)}
-                            </div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>OVERALL</div>
-                          </div>
-
-                          {/* PRONUNCIATION */}
-                          <div className="scoreMetricCard">
-                            <div className={`scoreRing ${scoreObj?.pronunciation >= 80 ? "scoreRingGood" : scoreObj?.pronunciation >= 60 ? "scoreRingWarn" : scoreObj?.pronunciation != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
-                              {scoreObj?.pronunciation != null ? Number(scoreObj.pronunciation).toFixed(0) : "n/a"}
-                            </div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>PRONUNCIATION</div>
-                          </div>
-
-                          {/* FLUENCY */}
-                          <div className="scoreMetricCard">
-                            <div className={`scoreRing ${scoreObj?.fluency >= 80 ? "scoreRingGood" : scoreObj?.fluency >= 60 ? "scoreRingWarn" : scoreObj?.fluency != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
-                              {scoreObj?.fluency != null ? Number(scoreObj.fluency).toFixed(0) : "n/a"}
-                            </div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>FLUENCY</div>
-                          </div>
-
-                          {/* GRAMMAR */}
-                          <div className="scoreMetricCard">
-                            <div className={`scoreRing ${scoreObj?.grammar >= 80 ? "scoreRingGood" : scoreObj?.grammar >= 60 ? "scoreRingWarn" : scoreObj?.grammar != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
-                              {task === "reading" ? "n/a" : scoreObj?.grammar != null ? Number(scoreObj.grammar).toFixed(0) : "n/a"}
-                            </div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>GRAMMAR</div>
-                          </div>
-
-                          {/* COHERENCE */}
-                          <div className="scoreMetricCard">
-                            <div className={`scoreRing ${scoreObj?.coherence >= 80 ? "scoreRingGood" : scoreObj?.coherence >= 60 ? "scoreRingWarn" : scoreObj?.coherence != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
-                              {task === "reading" ? "n/a" : scoreObj?.coherence != null ? Number(scoreObj.coherence).toFixed(0) : "n/a"}
-                            </div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>COHERENCE</div>
-                          </div>
-
-                          {/* VOCAB */}
-                          <div className="scoreMetricCard">
-                            <div className={`scoreRing ${scoreObj?.vocab >= 80 ? "scoreRingGood" : scoreObj?.vocab >= 60 ? "scoreRingWarn" : scoreObj?.vocab != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
-                              {task === "reading" ? "n/a" : scoreObj?.vocab != null ? Number(scoreObj.vocab).toFixed(0) : "n/a"}
-                            </div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text2)", letterSpacing: 1 }}>VOCABULARY</div>
-                          </div>
-
-                        </div>
-                    </div>
+                    memoizedScoreGrid
                   ) : (
                     !busy && result ? null : (
                       <div className="muted" style={{ marginTop: 12, padding: "40px 0", textAlign: "center", display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
