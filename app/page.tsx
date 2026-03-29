@@ -2698,11 +2698,11 @@ export default function Page() {
 
                   const style: CSSProperties =
                     band === "good"
-                      ? { background: "rgba(34,197,94,.12)", border: "1px solid rgba(34,197,94,.18)" }
+                      ? { background: "rgba(34,197,94,.20)", border: "1px solid rgba(34,197,94,.40)", color: "#4ade80" }
                       : band === "warn"
-                        ? { background: "rgba(245,158,11,.14)", border: "1px solid rgba(245,158,11,.20)" }
+                        ? { background: "rgba(245,158,11,.20)", border: "1px solid rgba(245,158,11,.40)", color: "#fbbf24" }
                         : band === "bad"
-                          ? { background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.18)" }
+                          ? { background: "rgba(239,68,68,.20)", border: "1px solid rgba(239,68,68,.40)", color: "#f87171" }
                           : {};
 
                   return (
@@ -2930,16 +2930,6 @@ export default function Page() {
         setClickPop(null);
       }}
     >
-      {/* ===== VIDEO BACKGROUND ===== */}
-      <video
-        autoPlay muted loop playsInline
-        style={{
-          position: "fixed", inset: 0, width: "100vw", height: "100vh",
-          objectFit: "cover", zIndex: -1, opacity: 0.3, pointerEvents: "none",
-        }}
-      >
-        <source src="/270341.mp4" type="video/mp4" />
-      </video>
       {/* ===== SIDEBAR ===== */}
       {/* Mobile overlay */}
       {mobileMenuOpen && (
