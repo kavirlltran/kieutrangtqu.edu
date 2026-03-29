@@ -2931,7 +2931,7 @@ export default function Page() {
         <div className="sidebarInner">
           {/* Logo */}
           <div className="sidebarLogo">
-            <div className="sidebarLogoIcon">🎙</div>
+            <div className="sidebarLogoIcon" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 900, fontSize: 22, fontStyle: "italic", letterSpacing: "-0.04em", color: "#fff" }}>K</div>
             <div>
               <div className="sidebarLogoText">KieuTrangAI</div>
               <div className="sidebarLogoSub">AI Practice</div>
@@ -3248,7 +3248,7 @@ export default function Page() {
               )}
 
               {/* Compact Recording Bar */}
-              <div className="card" style={{ padding: "12px 20px", display: "flex", flexDirection: "row", alignItems: "center", gap: 16, background: "rgba(10, 10, 20, 0.4)", backdropFilter: "blur(20px)", border: "1px solid rgba(0, 212, 255, 0.1)" }}>
+              <div className="card recordBar" style={{ padding: "12px 20px", display: "flex", flexDirection: "row", alignItems: "center", gap: 16, flexWrap: "wrap", background: "rgba(10, 10, 20, 0.4)", backdropFilter: "blur(20px)", border: "1px solid rgba(0, 212, 255, 0.1)" }}>
                 
                 {/* Nút Ghi Âm & Timer (Cột trái) */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -3357,7 +3357,7 @@ export default function Page() {
                         <div className="metricsGrid" style={{ width: "100%", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                           
                           {/* OVERALL */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
+                          <div className="scoreMetricCard">
                             <div className={`scoreRing ${overall >= 80 ? "scoreRingGood" : overall >= 60 ? "scoreRingWarn" : "scoreRingBad"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {overall.toFixed(0)}
                             </div>
@@ -3365,7 +3365,7 @@ export default function Page() {
                           </div>
 
                           {/* PRONUNCIATION */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
+                          <div className="scoreMetricCard">
                             <div className={`scoreRing ${scoreObj?.pronunciation >= 80 ? "scoreRingGood" : scoreObj?.pronunciation >= 60 ? "scoreRingWarn" : scoreObj?.pronunciation != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {scoreObj?.pronunciation != null ? Number(scoreObj.pronunciation).toFixed(0) : "n/a"}
                             </div>
@@ -3373,7 +3373,7 @@ export default function Page() {
                           </div>
 
                           {/* FLUENCY */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
+                          <div className="scoreMetricCard">
                             <div className={`scoreRing ${scoreObj?.fluency >= 80 ? "scoreRingGood" : scoreObj?.fluency >= 60 ? "scoreRingWarn" : scoreObj?.fluency != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {scoreObj?.fluency != null ? Number(scoreObj.fluency).toFixed(0) : "n/a"}
                             </div>
@@ -3381,7 +3381,7 @@ export default function Page() {
                           </div>
 
                           {/* GRAMMAR */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
+                          <div className="scoreMetricCard">
                             <div className={`scoreRing ${scoreObj?.grammar >= 80 ? "scoreRingGood" : scoreObj?.grammar >= 60 ? "scoreRingWarn" : scoreObj?.grammar != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {task === "reading" ? "n/a" : scoreObj?.grammar != null ? Number(scoreObj.grammar).toFixed(0) : "n/a"}
                             </div>
@@ -3389,7 +3389,7 @@ export default function Page() {
                           </div>
 
                           {/* COHERENCE */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
+                          <div className="scoreMetricCard">
                             <div className={`scoreRing ${scoreObj?.coherence >= 80 ? "scoreRingGood" : scoreObj?.coherence >= 60 ? "scoreRingWarn" : scoreObj?.coherence != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {task === "reading" ? "n/a" : scoreObj?.coherence != null ? Number(scoreObj.coherence).toFixed(0) : "n/a"}
                             </div>
@@ -3397,7 +3397,7 @@ export default function Page() {
                           </div>
 
                           {/* VOCAB */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "rgba(20, 20, 35, 0.45)", backdropFilter: "blur(16px) saturate(1.5)", WebkitBackdropFilter: "blur(16px) saturate(1.5)", padding: 24, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", transform: "translateZ(0)", willChange: "transform" }}>
+                          <div className="scoreMetricCard">
                             <div className={`scoreRing ${scoreObj?.vocab >= 80 ? "scoreRingGood" : scoreObj?.vocab >= 60 ? "scoreRingWarn" : scoreObj?.vocab != null ? "scoreRingBad" : "scoreRingNA"}`} style={{ width: 85, height: 85, fontSize: 26, borderWidth: 4 }}>
                               {task === "reading" ? "n/a" : scoreObj?.vocab != null ? Number(scoreObj.vocab).toFixed(0) : "n/a"}
                             </div>
