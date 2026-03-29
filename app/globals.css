@@ -1154,30 +1154,18 @@ body {
 }
 
 .metricCardPro {
-  background: rgba(20, 20, 35, 0.45);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
-  border: 1px solid var(--border);
+  background: #12102a;
+  border: 1px solid rgba(99, 102, 241, 0.15);
   border-radius: var(--r-lg);
   padding: 16px;
   border-left: 4px solid var(--accent);
-  animation: fadeUp 0.5s ease-out both;
-  transition: transform var(--tr-s), box-shadow var(--tr-s), background var(--tr-s);
+  /* NO animation, NO backdrop-filter — prevents flicker */
 }
 
 .metricCardPro:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--sh-md);
-  background: rgba(30, 30, 45, 0.55);
+  background: #1a1735;
 }
 
-/* Stagger animation for metrics */
-.metricCardPro:nth-child(1) { animation-delay: 0ms; }
-.metricCardPro:nth-child(2) { animation-delay: 60ms; }
-.metricCardPro:nth-child(3) { animation-delay: 120ms; }
-.metricCardPro:nth-child(4) { animation-delay: 180ms; }
-.metricCardPro:nth-child(5) { animation-delay: 240ms; }
-.metricCardPro:nth-child(6) { animation-delay: 300ms; }
 
 .metricTop {
   display: flex;
