@@ -2520,6 +2520,15 @@ export default function Page() {
         </div>
       ) : (
         <>
+          {/* METRICS */}
+          <div className="dashGrid">
+            <Metric label="Overall" value={overall} />
+            <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
+            <Metric label="Fluency" value={scoreObj?.fluency} />
+            <Metric label="Grammar" value={scoreObj?.grammar} />
+            <Metric label="Coherence" value={scoreObj?.coherence} />
+            <Metric label="Vocab" value={scoreObj?.vocab} />
+          </div>
 
           {/* RELEVANCE FALSE WARNING */}
           {task === "relevance" && String(relevanceClass).toUpperCase() === "FALSE" && (
@@ -3349,19 +3358,7 @@ export default function Page() {
 
                 {sendErr && <div className="alert alertErr">{sendErr}</div>}
 
-                {rightTab === "exercises" ? null : (
-                  /* 2x3 Circular Score Metrics Grid — MEMOIZED to prevent flicker */
-                  typeof overall === "number" ? (
-                    memoizedScoreGrid
-                  ) : (
-                    !busy && result ? null : (
-                      <div className="muted" style={{ marginTop: 12, padding: "40px 0", textAlign: "center", display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-                        <div style={{ fontSize: 40, opacity: 0.2 }}>⭕</div>
-                        {busy ? "⏳ Đang chấm điểm..." : "Chưa có kết quả. Hãy ghi âm hoặc upload audio."}
-                      </div>
-                    )
-                  )
-                )}
+
               </div>
 
               {/* Score or Exercise Panel */}
