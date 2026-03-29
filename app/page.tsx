@@ -2520,15 +2520,6 @@ export default function Page() {
         </div>
       ) : (
         <>
-          {/* METRICS */}
-          <div className="dashGrid">
-            <Metric label="Overall" value={overall} />
-            <Metric label="Pronunciation" value={scoreObj?.pronunciation} />
-            <Metric label="Fluency" value={scoreObj?.fluency} />
-            <Metric label="Grammar" value={scoreObj?.grammar} />
-            <Metric label="Coherence" value={scoreObj?.coherence} />
-            <Metric label="Vocab" value={scoreObj?.vocab} />
-          </div>
 
           {/* RELEVANCE FALSE WARNING */}
           {task === "relevance" && String(relevanceClass).toUpperCase() === "FALSE" && (
