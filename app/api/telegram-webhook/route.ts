@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Client, r2Bucket } from "@/lib/r2";
 
 const TASK_LABELS: Record<string, string> = {
@@ -49,11 +50,50 @@ function esc(v: any) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// Tạo presigned URL mới với hạn 7 ngày từ R2 key
+async function getFreshAudioUrl(key: string | null | undefined): Promise<string | null> {
+  if (!key) return null;
+  try {
+    return await getSignedUrl(
+      r2Client(),
+      new GetObjectCommand({ Bucket: r2Bucket(), Key: key }),
+      { expiresIn: 7 * 24 * 3600 }
+    );
+  } catch {
+    return null;
+  }
+}
+
+// Trích xuất R2 key từ presigned URL (fallback nếu audioKey không lưu)
+function extractKeyFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const path = new URL(url).pathname;
+    const clean = path.startsWith("/") ? path.slice(1) : path;
+    return clean.startsWith("uploads/") ? clean : null;
+  } catch {
+    return null;
+  }
+}
+
+function scoreColor(v: number | null) {
+  if (v == null) return "#9ca3af";
+  if (v >= 80) return "#16a34a";
+  if (v >= 60) return "#d97706";
+  return "#dc2626";
+}
+
+function scoreBg(v: number | null) {
+  if (v == null) return "#f9fafb";
+  if (v >= 80) return "#dcfce7";
+  if (v >= 60) return "#fef9c3";
+  return "#fee2e2";
+}
+
 async function buildClassReport(classCode: string) {
   const client = r2Client();
   const bucket = r2Bucket();
 
-  // Lấy danh sách file JSON của lớp từ R2
   const list = await client.send(
     new ListObjectsV2Command({
       Bucket: bucket,
@@ -65,47 +105,40 @@ async function buildClassReport(classCode: string) {
   const keys = (list.Contents || []).map((o) => o.Key!).filter(Boolean);
   if (!keys.length) return null;
 
-  // Đọc tất cả kết quả
   const results: any[] = [];
   for (const key of keys) {
     try {
       const obj = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       if (obj.Body) results.push(JSON.parse(await streamToText(obj.Body)));
-    } catch {
-      /* bỏ qua file lỗi */
+    } catch { /* bỏ qua file lỗi */ }
+  }
+
+  results.sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+
+  const taskTypes = [
+    ...new Set(results.flatMap((r) => r.tasks.map((t: any) => t.task))),
+  ] as string[];
+
+  // Tạo fresh audio URL cho tất cả học viên
+  for (const r of results) {
+    for (const t of r.tasks) {
+      const key = t.audioKey ?? extractKeyFromUrl(t.audioUrl);
+      t.freshAudioUrl = await getFreshAudioUrl(key);
     }
   }
 
-  // Sắp xếp theo thời gian nộp
-  results.sort(
-    (a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime()
-  );
-
-  // Lấy tất cả loại task hiện có
-  const taskTypes = [
-    ...new Set(results.flatMap((r) => r.tasks.map((t: any) => t.task))),
-  ];
-
-  // Tính điểm trung bình từng task
+  // Điểm trung bình lớp
   const avg: Record<string, number | null> = {};
   for (const t of taskTypes) {
     const vals = results
-      .flatMap((r) =>
-        r.tasks.filter((x: any) => x.task === t).map((x: any) => x.overall)
-      )
+      .flatMap((r) => r.tasks.filter((x: any) => x.task === t).map((x: any) => x.overall))
       .filter((v: any) => v != null) as number[];
-    avg[t] =
-      vals.length
-        ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
-        : null;
+    avg[t] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
   }
 
-  // ===== Tạo CSV =====
+  // ===== CSV =====
   const header = [
-    "STT",
-    "Họ tên",
-    "Email",
-    "Thời gian nộp",
+    "STT", "Họ tên", "Email", "Thời gian nộp",
     ...taskTypes.flatMap((t) => [
       `${TASK_LABELS[t] || t} - Overall`,
       `${TASK_LABELS[t] || t} - Pronunciation`,
@@ -121,9 +154,7 @@ async function buildClassReport(classCode: string) {
     const tm: Record<string, any> = {};
     for (const t of r.tasks) tm[t.task] = t;
     return [
-      i + 1,
-      r.fullName,
-      r.email,
+      i + 1, r.fullName, r.email,
       new Date(r.submittedAt).toLocaleString("vi-VN"),
       ...taskTypes.flatMap((t) => [
         fmt(tm[t]?.overall),
@@ -132,90 +163,142 @@ async function buildClassReport(classCode: string) {
         fmt(tm[t]?.grammar),
         fmt(tm[t]?.coherence),
         fmt(tm[t]?.vocab),
-        tm[t]?.audioUrl || "",
+        tm[t]?.freshAudioUrl ?? tm[t]?.audioUrl ?? "",
       ]),
     ];
   });
 
-  // Dòng trung bình lớp cuối CSV
   rows.push([
-    "TB",
-    "=== TRUNG BÌNH LỚP ===",
-    "",
-    "",
+    "TB", "=== TRUNG BÌNH LỚP ===", "", "",
     ...taskTypes.flatMap((t) => [fmt(avg[t]), "", "", "", "", "", ""]),
   ]);
 
   const csv = [header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
 
-  // ===== Tạo HTML =====
-  const thStyle = `style="background:#1e3a5f;color:#fff;padding:8px;text-align:center"`;
-  const tdStyle = `style="padding:8px;text-align:center;border:1px solid #ddd"`;
-
-  let htmlTable = `<!doctype html><html><head><meta charset="utf-8"/>
-<title>Bảng điểm lớp ${classCode}</title>
-<style>
-body{font-family:Arial,sans-serif;padding:20px}
-h2{color:#1e3a5f}
-table{border-collapse:collapse;width:100%;margin-top:12px}
-th{background:#1e3a5f;color:#fff;padding:8px;text-align:center}
-td{padding:8px;text-align:center;border:1px solid #ddd}
-tr:nth-child(even){background:#f5f9ff}
-.avg{background:#fff3cd;font-weight:bold}
-.good{color:#16a34a;font-weight:bold}
-.warn{color:#d97706;font-weight:bold}
-.bad{color:#dc2626;font-weight:bold}
-</style></head><body>
-<h2>📊 Bảng điểm lớp ${classCode.toUpperCase()}</h2>
-<p>Ngày xuất: ${new Date().toLocaleString("vi-VN")} &nbsp;|&nbsp; Số học viên: ${results.length}</p>
-<p><b>Điểm TB toàn lớp:</b> ${taskTypes.map((t) => `${TASK_LABELS[t] || t}: <b>${fmt(avg[t])}</b>`).join(" &nbsp;|&nbsp; ")}</p>
-<table>
-<tr>
-  <th>STT</th><th>Họ tên</th><th>Email</th><th>Nộp lúc</th>
-  ${taskTypes
-    .map(
-      (t) =>
-        `<th colspan="2">${TASK_LABELS[t] || t}</th>`
-    )
-    .join("")}
-</tr>
-<tr>
-  <th></th><th></th><th></th><th></th>
-  ${taskTypes.map(() => `<th>Overall</th><th>Audio</th>`).join("")}
-</tr>
-`;
-
+  // ===== HTML =====
+  let tableRows = "";
   results.forEach((r, i) => {
     const tm: Record<string, any> = {};
     for (const t of r.tasks) tm[t.task] = t;
-    const scoreColor = (v: number | null) =>
-      v == null ? "" : v >= 80 ? "good" : v >= 60 ? "warn" : "bad";
 
-    htmlTable += `<tr>
-  <td>${i + 1}</td>
-  <td style="text-align:left"><b>${esc(r.fullName)}</b></td>
-  <td style="text-align:left;font-size:0.85em">${esc(r.email)}</td>
-  <td style="font-size:0.8em">${new Date(r.submittedAt).toLocaleString("vi-VN")}</td>
-  ${taskTypes
-    .map((t) => {
-      const overall = tm[t]?.overall ?? null;
-      const audio = tm[t]?.audioUrl || "";
-      return `<td class="${scoreColor(overall)}">${fmt(overall)}</td>
-  <td>${audio ? `<a href="${esc(audio)}">🔊</a>` : "—"}</td>`;
-    })
-    .join("")}
+    const taskCells = taskTypes
+      .map((t) => {
+        const overall = tm[t]?.overall ?? null;
+        const pron = tm[t]?.pronunciation ?? null;
+        const flu = tm[t]?.fluency ?? null;
+        const audio = tm[t]?.freshAudioUrl ?? null;
+        return `<td style="padding:12px 10px;border:1px solid #e5e7eb;text-align:center;background:${scoreBg(overall)}">
+  <div style="font-size:1.5em;font-weight:800;color:${scoreColor(overall)};line-height:1">${fmt(overall)}</div>
+  <div style="font-size:0.72em;color:#6b7280;margin:4px 0">P: ${fmt(pron)} &nbsp; F: ${fmt(flu)}</div>
+  ${audio
+    ? `<a href="${esc(audio)}" target="_blank" style="display:inline-block;background:#2563eb;color:#fff;padding:4px 10px;border-radius:20px;font-size:0.78em;text-decoration:none;margin-top:2px">🔊 Nghe</a>`
+    : `<span style="color:#d1d5db;font-size:0.8em">— chưa có audio —</span>`}
+</td>`;
+      })
+      .join("");
+
+    tableRows += `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8faff"}">
+  <td style="padding:10px;border:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-weight:600">${i + 1}</td>
+  <td style="padding:10px;border:1px solid #e5e7eb;font-weight:700;color:#111827">${esc(r.fullName)}</td>
+  <td style="padding:10px;border:1px solid #e5e7eb;color:#4b5563;font-size:0.88em">${esc(r.email)}</td>
+  <td style="padding:10px;border:1px solid #e5e7eb;color:#6b7280;font-size:0.82em;white-space:nowrap">${new Date(r.submittedAt).toLocaleString("vi-VN")}</td>
+  ${taskCells}
 </tr>`;
   });
 
   // Dòng trung bình
-  htmlTable += `<tr class="avg">
-  <td colspan="4"><b>📈 Trung bình lớp</b></td>
-  ${taskTypes.map((t) => `<td><b>${fmt(avg[t])}</b></td><td>—</td>`).join("")}
-</tr>`;
+  const avgCells = taskTypes
+    .map(
+      (t) =>
+        `<td style="padding:12px;border:1px solid #e5e7eb;text-align:center;background:#fef3c7">
+  <div style="font-size:1.4em;font-weight:800;color:${scoreColor(avg[t])}">${fmt(avg[t])}</div>
+  <div style="font-size:0.72em;color:#92400e;margin-top:2px">Trung bình</div>
+</td>`
+    )
+    .join("");
 
-  htmlTable += `</table></body></html>`;
+  const statsHtml = taskTypes
+    .map(
+      (t) => `<div style="text-align:center;min-width:80px">
+  <div style="font-size:2em;font-weight:900;color:${scoreColor(avg[t])}">${fmt(avg[t])}</div>
+  <div style="font-size:0.78em;color:#6b7280;margin-top:2px">${(TASK_LABELS[t] || t).replace(/[📚💬🎯] /, "")}</div>
+</div>`
+    )
+    .join(`<div style="width:1px;background:#e5e7eb;margin:0 8px"></div>`);
 
-  // ===== Tin nhắn tóm tắt Telegram =====
+  const thTask = taskTypes
+    .map(
+      (t) =>
+        `<th style="padding:12px;background:#1e3a5f;color:#fff;border:1px solid #1e40af;text-align:center;font-size:0.95em">${TASK_LABELS[t] || t}<br/><span style="font-size:0.78em;opacity:0.75">Overall · Audio</span></th>`
+    )
+    .join("");
+
+  const html = `<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Bảng điểm lớp ${classCode.toUpperCase()}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#eef2f7;padding:20px;min-height:100vh}
+.card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.10);overflow:hidden;max-width:1200px;margin:0 auto}
+.header{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);color:#fff;padding:28px 32px}
+.header h1{font-size:1.8em;font-weight:800;letter-spacing:-.5px}
+.header p{opacity:.8;margin-top:6px;font-size:.93em}
+.stats{display:flex;align-items:center;gap:0;padding:18px 32px;background:#f8faff;border-bottom:1px solid #e5e7eb;flex-wrap:wrap;row-gap:12px}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px}
+.th-base{padding:12px;background:#374151;color:#fff;text-align:left;font-weight:600;border:1px solid #374151;white-space:nowrap}
+.avg-row td{font-weight:700}
+.legend{display:flex;gap:20px;padding:14px 32px;font-size:.83em;color:#6b7280;border-top:1px solid #e5e7eb;flex-wrap:wrap}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+</style>
+</head><body>
+<div class="card">
+
+  <div class="header">
+    <h1>📊 Bảng điểm lớp ${classCode.toUpperCase()}</h1>
+    <p>Xuất lúc: ${new Date().toLocaleString("vi-VN")} &nbsp;•&nbsp; Tổng số học viên: <b>${results.length}</b></p>
+  </div>
+
+  <div class="stats">
+    <div style="font-size:.82em;color:#6b7280;margin-right:16px">Điểm TB toàn lớp:</div>
+    ${statsHtml}
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="th-base" style="text-align:center;width:48px">STT</th>
+          <th class="th-base">Họ tên</th>
+          <th class="th-base">Email</th>
+          <th class="th-base" style="white-space:nowrap">Nộp lúc</th>
+          ${thTask}
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows}
+        <tr class="avg-row" style="background:#fffbeb">
+          <td style="padding:10px;border:1px solid #e5e7eb;text-align:center">📈</td>
+          <td colspan="3" style="padding:10px;border:1px solid #e5e7eb;color:#92400e;font-size:.92em">Điểm trung bình lớp</td>
+          ${avgCells}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#16a34a"></span>≥ 80 · Tốt</span>
+    <span><span class="dot" style="background:#d97706"></span>60 – 79 · Khá</span>
+    <span><span class="dot" style="background:#dc2626"></span>&lt; 60 · Cần cải thiện</span>
+    <span style="margin-left:auto;color:#9ca3af">Link audio có hiệu lực 7 ngày</span>
+  </div>
+
+</div>
+</body></html>`;
+
+  // Tin nhắn tóm tắt Telegram
   const summary = [
     `📊 KẾT QUẢ LỚP ${classCode.toUpperCase()}`,
     `📅 ${new Date().toLocaleString("vi-VN")}`,
@@ -236,7 +319,7 @@ tr:nth-child(even){background:#f5f9ff}
     }),
   ].join("\n");
 
-  return { summary, csv, html: htmlTable };
+  return { summary, csv, html };
 }
 
 export async function POST(req: Request) {
@@ -252,14 +335,13 @@ export async function POST(req: Request) {
     const text = String(message.text).trim();
 
     // Lệnh: /report 10A1
-    const match = text.match(/^\/report\s+(\S+)/i);
+    const match = text.match(/^\/report(?:@\S+)?\s+(\S+)/i);
     if (!match) return Response.json({ ok: true });
 
     const classCode = match[1];
     await tgSend(token, chatId, `⏳ Đang tổng hợp kết quả lớp ${classCode}...`);
 
     const report = await buildClassReport(classCode);
-
     if (!report) {
       await tgSend(
         token,
@@ -269,18 +351,16 @@ export async function POST(req: Request) {
     } else {
       await tgSend(token, chatId, report.summary);
       await tgSendDoc(
-        token,
-        chatId,
+        token, chatId,
         new Blob([report.html], { type: "text/html" }),
         `bang_diem_${classCode}.html`,
-        `📊 Bảng điểm chi tiết lớp ${classCode} (HTML)`
+        `📊 Bảng điểm lớp ${classCode} — mở bằng trình duyệt để xem + nghe audio`
       );
       await tgSendDoc(
-        token,
-        chatId,
+        token, chatId,
         new Blob([report.csv], { type: "text/csv" }),
         `bang_diem_${classCode}.csv`,
-        `📊 Bảng điểm chi tiết lớp ${classCode} (CSV)`
+        `📊 Bảng điểm lớp ${classCode} — mở bằng Excel / Google Sheets`
       );
     }
 

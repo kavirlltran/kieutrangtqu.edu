@@ -573,10 +573,20 @@ export async function POST(req: Request) {
               tr.task === "reading"
                 ? sp?.text_score?.speechace_score ?? sp?.speechace_score ?? null
                 : sp?.speech_score?.speechace_score ?? sp?.speechace_score ?? null;
+            // Thử nhiều đường dẫn vì SpeechAce trả về cấu trúc khác nhau
             const overall =
               tr.task === "reading"
-                ? sp?.text_score?.speechace_score?.overall ?? tr.result?.overall ?? null
-                : sp?.speech_score?.speechace_score?.overall ?? tr.result?.overall ?? null;
+                ? sp?.text_score?.speechace_score?.overall
+                  ?? sp?.text_score?.speechace_score?.quality_score
+                  ?? sp?.text_score?.quality_score
+                  ?? sp?.speechace_score?.overall
+                  ?? tr.result?.overall
+                  ?? null
+                : sp?.speech_score?.speechace_score?.overall
+                  ?? sp?.speech_score?.quality_score
+                  ?? sp?.speechace_score?.overall
+                  ?? tr.result?.overall
+                  ?? null;
             return {
               task: tr.task,
               overall: overall ?? null,
@@ -585,6 +595,8 @@ export async function POST(req: Request) {
               grammar: scoreObj?.grammar ?? null,
               coherence: scoreObj?.coherence ?? null,
               vocab: scoreObj?.vocab ?? null,
+              // Lưu R2 key để tạo URL mới khi xuất báo cáo (presigned URL hết hạn sau 60s)
+              audioKey: (tr.result?.audioKey as string | undefined) ?? null,
               audioUrl: tr.audioUrl ?? null,
             };
           }),
