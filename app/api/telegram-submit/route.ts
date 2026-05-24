@@ -1,5 +1,8 @@
 export const runtime = "nodejs";
 
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { r2Client, r2Bucket } from "@/lib/r2";
+
 type TaskResultEntry = {
   task: string;
   result: any | null;
@@ -552,6 +555,51 @@ export async function POST(req: Request) {
         }
       } catch {
         // ignore
+      }
+    }
+
+    // ===== Lưu điểm vào R2 để tổng hợp theo lớp =====
+    if (payload.classCode) {
+      try {
+        const entry = {
+          submittedAt: new Date().toISOString(),
+          fullName: payload.fullName,
+          email: payload.email,
+          classCode: payload.classCode,
+          dialect: payload.dialect,
+          tasks: taskResultsList.map((tr) => {
+            const sp = tr.result?.speechace;
+            const scoreObj =
+              tr.task === "reading"
+                ? sp?.text_score?.speechace_score ?? sp?.speechace_score ?? null
+                : sp?.speech_score?.speechace_score ?? sp?.speechace_score ?? null;
+            const overall =
+              tr.task === "reading"
+                ? sp?.text_score?.speechace_score?.overall ?? tr.result?.overall ?? null
+                : sp?.speech_score?.speechace_score?.overall ?? tr.result?.overall ?? null;
+            return {
+              task: tr.task,
+              overall: overall ?? null,
+              pronunciation: scoreObj?.pronunciation ?? null,
+              fluency: scoreObj?.fluency ?? null,
+              grammar: scoreObj?.grammar ?? null,
+              coherence: scoreObj?.coherence ?? null,
+              vocab: scoreObj?.vocab ?? null,
+              audioUrl: tr.audioUrl ?? null,
+            };
+          }),
+        };
+        const safeEmail = payload.email.replace(/[^a-zA-Z0-9@._-]/g, "_");
+        await r2Client().send(
+          new PutObjectCommand({
+            Bucket: r2Bucket(),
+            Key: `class-results/${payload.classCode}/${Date.now()}_${safeEmail}.json`,
+            Body: JSON.stringify(entry),
+            ContentType: "application/json",
+          })
+        );
+      } catch {
+        // Không làm hỏng flow chính nếu lưu R2 thất bại
       }
     }
 
