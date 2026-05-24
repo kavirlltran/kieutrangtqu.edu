@@ -136,6 +136,42 @@ async function buildClassReport(classCode: string) {
     avg[t] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
   }
 
+  // Phân loại học sinh (dựa trên điểm TB của học sinh)
+  const classLevels = [
+    { label: "Xuất sắc",   color: "#065f46", bg: "#d1fae5", border: "#6ee7b7", min: 90 },
+    { label: "Giỏi",       color: "#166534", bg: "#dcfce7", border: "#86efac", min: 80 },
+    { label: "Khá",        color: "#92400e", bg: "#fef9c3", border: "#fde68a", min: 65 },
+    { label: "Trung bình", color: "#9a3412", bg: "#ffedd5", border: "#fdba74", min: 50 },
+    { label: "Yếu",        color: "#991b1b", bg: "#fee2e2", border: "#fca5a5", min: 0  },
+  ];
+  const studentAvgScores = results.map((r: any) => {
+    const vals = r.tasks.map((t: any) => t.overall).filter((v: any) => v != null) as number[];
+    return vals.length ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : null;
+  });
+  const classCount = [0, 0, 0, 0, 0];
+  let classifiedCount = 0;
+  for (const v of studentAvgScores) {
+    if (v == null) continue;
+    classifiedCount++;
+    if (v >= 90)      classCount[0]++;
+    else if (v >= 80) classCount[1]++;
+    else if (v >= 65) classCount[2]++;
+    else if (v >= 50) classCount[3]++;
+    else              classCount[4]++;
+  }
+  const classBreakdownHtml = classLevels.map((lv, idx) => {
+    const count = classCount[idx];
+    const pct = classifiedCount > 0 ? Math.round((count / classifiedCount) * 100) : 0;
+    return `<div style="background:${lv.bg};border:1.5px solid ${lv.border};border-radius:10px;padding:12px 10px;text-align:center">
+      <div style="font-size:.78em;font-weight:700;color:${lv.color};margin-bottom:5px">${lv.label}</div>
+      <div style="font-size:1.9em;font-weight:900;color:${lv.color};line-height:1">${count}</div>
+      <div style="font-size:.72em;color:${lv.color};opacity:.85;margin-top:3px">${pct}%</div>
+      <div style="margin-top:6px;background:rgba(0,0,0,.1);border-radius:4px;height:5px;overflow:hidden">
+        <div style="height:100%;border-radius:4px;background:${lv.color};width:${pct}%;opacity:.75"></div>
+      </div>
+    </div>`;
+  }).join("");
+
   // ===== CSV =====
   const header = [
     "STT", "Họ tên", "Email", "Thời gian nộp",
@@ -246,11 +282,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#eef2f7;padding:20px;min
 .header h1{font-size:1.8em;font-weight:800;letter-spacing:-.5px}
 .header p{opacity:.8;margin-top:6px;font-size:.93em}
 .stats{display:flex;align-items:center;gap:0;padding:18px 32px;background:#f8faff;border-bottom:1px solid #e5e7eb;flex-wrap:wrap;row-gap:12px}
+.classify{padding:18px 32px 22px;background:#fff;border-bottom:1px solid #e5e7eb}
+.classify-grid{display:grid;grid-template-columns:repeat(5,minmax(80px,1fr));gap:10px;margin-top:10px}
 .table-wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;min-width:560px}
 .th-base{padding:12px;background:#374151;color:#fff;text-align:left;font-weight:600;border:1px solid #374151;white-space:nowrap}
 .avg-row td{font-weight:700}
-.legend{display:flex;gap:20px;padding:14px 32px;font-size:.83em;color:#6b7280;border-top:1px solid #e5e7eb;flex-wrap:wrap}
+.legend{display:flex;gap:16px;padding:14px 32px;font-size:.83em;color:#6b7280;border-top:1px solid #e5e7eb;flex-wrap:wrap}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
 </style>
 </head><body>
@@ -262,8 +300,13 @@ table{border-collapse:collapse;width:100%;min-width:560px}
   </div>
 
   <div class="stats">
-    <div style="font-size:.82em;color:#6b7280;margin-right:16px">Điểm TB toàn lớp:</div>
+    <div style="font-size:.82em;color:#6b7280;margin-right:16px;font-weight:600">Điểm TB toàn lớp:</div>
     ${statsHtml}
+  </div>
+
+  <div class="classify">
+    <div style="font-size:.75em;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">Phân loại học sinh</div>
+    <div class="classify-grid">${classBreakdownHtml}</div>
   </div>
 
   <div class="table-wrap">
@@ -289,9 +332,11 @@ table{border-collapse:collapse;width:100%;min-width:560px}
   </div>
 
   <div class="legend">
-    <span><span class="dot" style="background:#16a34a"></span>≥ 80 · Tốt</span>
-    <span><span class="dot" style="background:#d97706"></span>60 – 79 · Khá</span>
-    <span><span class="dot" style="background:#dc2626"></span>&lt; 60 · Cần cải thiện</span>
+    <span><span class="dot" style="background:#065f46"></span>≥ 90 · Xuất sắc</span>
+    <span><span class="dot" style="background:#16a34a"></span>80–89 · Giỏi</span>
+    <span><span class="dot" style="background:#d97706"></span>65–79 · Khá</span>
+    <span><span class="dot" style="background:#ea580c"></span>50–64 · Trung bình</span>
+    <span><span class="dot" style="background:#dc2626"></span>&lt; 50 · Yếu</span>
     <span style="margin-left:auto;color:#9ca3af">Link audio có hiệu lực 7 ngày</span>
   </div>
 
@@ -299,6 +344,11 @@ table{border-collapse:collapse;width:100%;min-width:560px}
 </body></html>`;
 
   // Tin nhắn tóm tắt Telegram
+  const classLevelNames = ["Xuất sắc", "Giỏi", "Khá", "Trung bình", "Yếu"];
+  const classBreakdownLines = classLevelNames
+    .map((lv, idx) => classCount[idx] > 0 ? `  ${lv}: ${classCount[idx]} HS` : null)
+    .filter((x): x is string => x !== null);
+
   const summary = [
     `📊 KẾT QUẢ LỚP ${classCode.toUpperCase()}`,
     `📅 ${new Date().toLocaleString("vi-VN")}`,
@@ -307,8 +357,11 @@ table{border-collapse:collapse;width:100%;min-width:560px}
     `📈 Điểm TB toàn lớp:`,
     ...taskTypes.map((t) => `  ${TASK_LABELS[t] || t}: ${fmt(avg[t])}`),
     ``,
+    `🏆 Phân loại:`,
+    ...classBreakdownLines,
+    ``,
     `👤 Chi tiết:`,
-    ...results.map((r, i) => {
+    ...results.map((r: any, i: number) => {
       const parts = r.tasks
         .map(
           (t: any) =>

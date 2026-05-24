@@ -103,6 +103,29 @@ function csvEscape(v: any) {
   return s;
 }
 
+function rankInfo(v: number | null) {
+  if (v == null) return { label: "—",         color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" };
+  if (v >= 90)   return { label: "Xuất sắc",  color: "#065f46", bg: "#d1fae5", border: "#6ee7b7" };
+  if (v >= 80)   return { label: "Giỏi",      color: "#166534", bg: "#dcfce7", border: "#86efac" };
+  if (v >= 65)   return { label: "Khá",       color: "#92400e", bg: "#fef9c3", border: "#fde68a" };
+  if (v >= 50)   return { label: "Trung bình",color: "#9a3412", bg: "#ffedd5", border: "#fdba74" };
+  return           { label: "Yếu",            color: "#991b1b", bg: "#fee2e2", border: "#fca5a5" };
+}
+
+function mkBar(label: string, v: number | null): string {
+  if (v == null) return "";
+  const pct = Math.min(100, Math.max(0, v));
+  const c = v >= 80 ? "#16a34a" : v >= 60 ? "#d97706" : "#dc2626";
+  return `<div style="margin-bottom:9px">
+    <div style="display:flex;justify-content:space-between;font-size:.82em;margin-bottom:3px;color:#4b5563">
+      <span>${label}</span><b style="color:${c}">${v}</b>
+    </div>
+    <div style="background:#e5e7eb;border-radius:4px;height:8px">
+      <div style="height:100%;border-radius:4px;background:${c};width:${pct}%"></div>
+    </div>
+  </div>`;
+}
+
 async function tgSendMessage(token: string, chatId: string, text: string) {
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const r = await fetch(url, {
@@ -206,66 +229,108 @@ function buildScoreSection(taskName: string, result: any, audioUrl: string | nul
   txtLines.push("");
 
   // ── HTML block ──
-  let html = `<h2>${label}</h2>
-<table>
-<tr><th>Overall</th><td><b style="font-size:1.2em;color:#3b82f6">${csvEscape(overall ?? "n/a")}</b></td></tr>
-<tr><th>Pronunciation</th><td>${csvEscape(pron)}</td></tr>
-<tr><th>Fluency</th><td>${csvEscape(flu)}</td></tr>
-<tr><th>Grammar</th><td>${csvEscape(gra)}</td></tr>
-<tr><th>Coherence</th><td>${csvEscape(coh)}</td></tr>
-<tr><th>Vocab</th><td>${csvEscape(voc)}</td></tr>`;
+  const rk = rankInfo(overall);
 
-  // IELTS / CEFR / PTE / TOEIC
-  if (ielts) html += `<tr><th>IELTS</th><td>${csvEscape(typeof ielts === "object" ? JSON.stringify(ielts) : ielts)}</td></tr>`;
-  if (cefr) html += `<tr><th>CEFR</th><td>${csvEscape(typeof cefr === "object" ? JSON.stringify(cefr) : cefr)}</td></tr>`;
-  if (pte) html += `<tr><th>PTE</th><td>${csvEscape(typeof pte === "object" ? JSON.stringify(pte) : pte)}</td></tr>`;
-  if (toeic) html += `<tr><th>TOEIC</th><td>${csvEscape(typeof toeic === "object" ? JSON.stringify(toeic) : toeic)}</td></tr>`;
+  const audioBtn = audioUrl
+    ? `<a href="${csvEscape(audioUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;padding:8px 18px;border-radius:24px;font-size:.88em;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(37,99,235,.3)">🔊 Nghe lại audio</a>`
+    : `<span style="color:#9ca3af;font-size:.85em;font-style:italic">Chưa có audio</span>`;
 
-  // Relevance
+  const metricBars = [
+    pron != null ? mkBar("🎯 Pronunciation", pron) : "",
+    flu  != null ? mkBar("🗣 Fluency",        flu)  : "",
+    gra  != null ? mkBar("📝 Grammar",        gra)  : "",
+    coh  != null ? mkBar("💡 Coherence",      coh)  : "",
+    voc  != null ? mkBar("📖 Vocab",          voc)  : "",
+  ].filter(Boolean).join("");
+
+  const stdBadges = [
+    ielts  ? `<span style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:12px;padding:2px 10px;font-size:.78em;font-weight:700">IELTS: ${typeof ielts === "object" ? JSON.stringify(ielts) : ielts}</span>`   : "",
+    cefr   ? `<span style="background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:12px;padding:2px 10px;font-size:.78em;font-weight:700">CEFR: ${typeof cefr === "object" ? JSON.stringify(cefr) : cefr}</span>`     : "",
+    pte    ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:12px;padding:2px 10px;font-size:.78em;font-weight:700">PTE: ${typeof pte === "object" ? JSON.stringify(pte) : pte}</span>`          : "",
+    toeic  ? `<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:12px;padding:2px 10px;font-size:.78em;font-weight:700">TOEIC: ${typeof toeic === "object" ? JSON.stringify(toeic) : toeic}</span>` : "",
+  ].filter(Boolean).join(" ");
+
+  const wordChips = weakest.map((w: any) => {
+    const q = w.quality_score;
+    const cc = q < 30
+      ? { bg: "#fee2e2", c: "#991b1b", bd: "#fca5a5" }
+      : q < 60
+        ? { bg: "#fef9c3", c: "#92400e", bd: "#fde68a" }
+        : { bg: "#dcfce7", c: "#166534", bd: "#86efac" };
+    return `<span style="display:inline-block;background:${cc.bg};color:${cc.c};border:1px solid ${cc.bd};border-radius:20px;padding:3px 10px;font-size:.82em;margin:3px 3px 3px 0;font-weight:600">${csvEscape(w.word)} <b>${q}</b></span>`;
+  }).join("");
+
+  const allWordChips = wordList.length > 0
+    ? wordList.filter((w: any) => w?.word).slice(0, 50).map((w: any) => {
+        const q: number | null = w.quality_score ?? null;
+        const cc = q == null
+          ? { bg: "#f3f4f6", c: "#6b7280", bd: "#e5e7eb" }
+          : q < 30  ? { bg: "#fee2e2", c: "#991b1b", bd: "#fca5a5" }
+          : q < 60  ? { bg: "#fef9c3", c: "#92400e", bd: "#fde68a" }
+          :           { bg: "#dcfce7", c: "#166534", bd: "#86efac" };
+        return `<span style="display:inline-block;background:${cc.bg};color:${cc.c};border:1px solid ${cc.bd};border-radius:16px;padding:2px 9px;font-size:.76em;margin:2px;font-weight:600">${csvEscape(w.word)}${q != null ? ` <b>${q}</b>` : ""}</span>`;
+      }).join("")
+    : "";
+
+  let html = `<div style="border:2px solid ${rk.border};border-radius:14px;overflow:hidden;margin-bottom:24px;box-shadow:0 2px 14px rgba(0,0,0,.08)">
+  <div style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="color:#fff;font-size:1.08em;font-weight:800;letter-spacing:.2px">${label}</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:2.5em;font-weight:900;color:#fff;line-height:1;text-shadow:0 2px 4px rgba(0,0,0,.25)">${overall ?? "—"}</div>
+      <div style="background:${rk.bg};color:${rk.color};border:2px solid ${rk.border};border-radius:20px;padding:4px 14px;font-size:.82em;font-weight:800">${rk.label}</div>
+    </div>
+  </div>
+  <div style="padding:18px 22px 10px;background:#fff">
+    ${metricBars || `<div style="color:#9ca3af;font-style:italic;font-size:.88em;padding:8px 0">Chưa có điểm chi tiết</div>`}
+    ${stdBadges ? `<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">${stdBadges}</div>` : ""}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f0">${audioBtn}</div>
+  </div>`;
+
   if (taskName === "relevance") {
-    html += `<tr><th>Relevance</th><td><span style="color:${String(relevanceClass).toUpperCase() === "TRUE" ? "green" : "red"};font-weight:bold">${csvEscape(relevanceClass ?? "n/a")}</span></td></tr>`;
-    html += `<tr><th>Relevance Score</th><td>${csvEscape(relevanceScore)}</td></tr>`;
-    if (relevanceContext) html += `<tr><th>Context</th><td>${csvEscape(relevanceContext)}</td></tr>`;
-    if (geminiRelevance != null) {
-      html += `<tr><th>🤖 Gemini AI</th><td><span style="color:${geminiRelevance ? "green" : "red"};font-weight:bold">${geminiRelevance ? "TRUE" : "FALSE"}</span> – ${csvEscape(geminiReason)}</td></tr>`;
-    }
+    const relOk = String(relevanceClass).toUpperCase() === "TRUE";
+    html += `<div style="margin:0 22px 16px;padding:14px;background:#f8faff;border-radius:10px;border:1px solid #e0e7ff">
+    <div style="font-weight:700;color:#1e3a5f;margin-bottom:8px;font-size:.9em">🎯 Relevance Analysis</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="background:${relOk ? "#dcfce7" : "#fee2e2"};color:${relOk ? "#16a34a" : "#dc2626"};border-radius:20px;padding:4px 16px;font-weight:800;font-size:.9em">${csvEscape(relevanceClass ?? "n/a")}</span>
+      ${relevanceScore != null ? `<span style="color:#6b7280;font-size:.88em">Score: <b style="color:#374151">${relevanceScore}</b></span>` : ""}
+      ${geminiRelevance != null ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:20px;padding:4px 12px;font-size:.82em;font-weight:700">🤖 Gemini: ${geminiRelevance ? "TRUE" : "FALSE"}</span>` : ""}
+    </div>
+    ${relevanceContext ? `<div style="margin-top:8px;font-size:.82em;color:#6b7280">Context: ${csvEscape(relevanceContext)}</div>` : ""}
+    ${geminiReason ? `<div style="margin-top:6px;font-size:.82em;color:#6b7280">AI reason: ${csvEscape(geminiReason)}</div>` : ""}
+  </div>`;
   }
 
-  html += `</table>`;
+  if (refText) {
+    html += `<div style="margin:0 22px 16px">
+    <div style="font-size:.78em;font-weight:700;color:#1d4ed8;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">📖 Reference Text</div>
+    <div style="background:#eff6ff;border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;padding:12px 14px;font-size:.88em;line-height:1.75;color:#1e3a5f;white-space:pre-wrap">${csvEscape(refText)}</div>
+  </div>`;
+  }
 
-  // Audio link
-  if (audioUrl) html += `<p><b>🔊 Audio:</b> <a href="${csvEscape(audioUrl)}">Tải audio</a></p>`;
+  if (transcript) {
+    html += `<div style="margin:0 22px 16px">
+    <div style="font-size:.78em;font-weight:700;color:#15803d;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">🎙 Transcript</div>
+    <div style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:0 8px 8px 0;padding:12px 14px;font-size:.88em;line-height:1.75;color:#14532d;white-space:pre-wrap">${csvEscape(transcript)}</div>
+  </div>`;
+  }
 
-  // Reference text (reading)
-  if (refText) html += `<h4>📖 Reference Text</h4><pre style="background:#f0f7ff;border:1px solid #93c5fd;padding:10px;border-radius:8px">${csvEscape(refText)}</pre>`;
-
-  // Transcript
-  if (transcript) html += `<h4>🎙 Transcript</h4><pre style="background:#f0fdf4;border:1px solid #86efac;padding:10px;border-radius:8px">${csvEscape(transcript)}</pre>`;
-
-  // Weakest words table (reading)
   if (weakest.length) {
-    html += `<h4>⚠️ Weakest Words</h4>`;
-    html += `<table><tr><th>#</th><th>Word</th><th>Quality</th><th>Phone count</th></tr>`;
-    weakest.forEach((w: any, i: number) => {
-      const color = w.quality_score < 30 ? "#ef4444" : w.quality_score < 60 ? "#f59e0b" : "#22c55e";
-      html += `<tr><td>${i + 1}</td><td><b>${csvEscape(w.word)}</b></td><td style="color:${color};font-weight:bold">${w.quality_score}</td><td>${w.phone_score_list?.length ?? "—"}</td></tr>`;
-    });
-    html += `</table>`;
+    html += `<div style="margin:0 22px 16px">
+    <div style="font-size:.78em;font-weight:700;color:#dc2626;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">⚠️ Từ phát âm yếu nhất</div>
+    <div style="line-height:2.2">${wordChips}</div>
+  </div>`;
   }
 
-  // All words table (top 30)
   if (wordList.length > 0) {
-    const allWords = wordList.filter((w: any) => w?.word).slice(0, 40);
-    html += `<details><summary><b>📊 All word scores (${wordList.length} words)</b></summary>`;
-    html += `<table><tr><th>Word</th><th>Quality</th></tr>`;
-    allWords.forEach((w: any) => {
-      const q = w.quality_score ?? "—";
-      const color = typeof q === "number" ? (q < 30 ? "#ef4444" : q < 60 ? "#f59e0b" : "#22c55e") : "#888";
-      html += `<tr><td>${csvEscape(w.word)}</td><td style="color:${color};font-weight:bold">${q}</td></tr>`;
-    });
-    if (wordList.length > 40) html += `<tr><td colspan="2"><em>... và ${wordList.length - 40} từ nữa</em></td></tr>`;
-    html += `</table></details>`;
+    html += `<div style="margin:0 22px 20px">
+    <details>
+      <summary style="cursor:pointer;font-size:.82em;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;padding:6px 0">📊 Tất cả từ (${wordList.length} từ) — nhấn để mở rộng</summary>
+      <div style="margin-top:8px;line-height:2.2">${allWordChips}${wordList.length > 50 ? `<span style="color:#9ca3af;font-size:.78em"> ... và ${wordList.length - 50} từ nữa</span>` : ""}</div>
+    </details>
+  </div>`;
   }
+
+  html += `</div>`;
 
   return { txtLines, html };
 }
@@ -402,35 +467,104 @@ function buildReports(p: Payload) {
   const txt = lines.join("\n");
   const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\n");
 
+  // ── Compute avg overall for overview ──
+  const overallScores = taskResultsList.map((tr) => {
+    const sp = tr.result?.speechace;
+    const v = tr.task === "reading"
+      ? sp?.text_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? tr.result?.overall
+      : sp?.speech_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? tr.result?.overall;
+    return v ?? null;
+  }).filter((v): v is number => v != null);
+  const avgOverall = overallScores.length
+    ? Math.round(overallScores.reduce((a: number, b: number) => a + b, 0) / overallScores.length)
+    : null;
+  const avgRk = rankInfo(avgOverall);
+
+  const overviewCards = taskResultsList.map((tr) => {
+    const sp = tr.result?.speechace;
+    const ovr = (tr.task === "reading"
+      ? sp?.text_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? tr.result?.overall
+      : sp?.speech_score?.speechace_score?.overall ?? sp?.speechace_score?.overall ?? tr.result?.overall) ?? null;
+    const trk = rankInfo(ovr as number | null);
+    const lbl = TASK_LABELS[tr.task] || tr.task.toUpperCase();
+    return `<div style="flex:1;min-width:130px;background:${trk.bg};border:2px solid ${trk.border};border-radius:12px;padding:14px 16px;text-align:center">
+      <div style="font-size:.72em;font-weight:700;color:#374151;margin-bottom:6px">${lbl}</div>
+      <div style="font-size:2.2em;font-weight:900;color:${trk.color};line-height:1">${ovr ?? "—"}</div>
+      <div style="font-size:.74em;color:${trk.color};font-weight:700;margin-top:4px">${trk.label}</div>
+    </div>`;
+  }).join("");
+
   const html = `<!doctype html>
-<html><head><meta charset="utf-8" />
-<title>Student Report</title>
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Báo cáo – ${csvEscape(p.fullName)}</title>
 <style>
-body{font-family:Arial, sans-serif; padding:16px; line-height:1.5}
-h2{margin:18px 0 8px; border-bottom:2px solid #3b82f6; padding-bottom:6px}
-h3{margin:14px 0 6px}
-table{border-collapse:collapse; width:100%; margin:8px 0}
-td,th{border:1px solid #ddd; padding:8px; vertical-align:top}
-th{background:#f5f5f5; text-align:left}
-pre{white-space:pre-wrap; background:#fafafa; border:1px solid #eee; padding:10px}
-hr{border:0;border-top:1px solid #eee;margin:18px 0}
-small{color:#888;font-weight:normal}
-</style></head>
-<body>
-<h2>📋 Thông tin học viên</h2>
-<table>
-<tr><th>Họ tên</th><td>${csvEscape(p.fullName)}</td></tr>
-<tr><th>Email</th><td>${csvEscape(p.email)}</td></tr>
-<tr><th>Dialect</th><td>${csvEscape(p.dialect)}</td></tr>
-<tr><th>Số phần đã làm</th><td>${taskResultsList.length}</td></tr>
-<tr><th>Các phần</th><td>${taskResultsList.map((t) => TASK_LABELS[t.task] || t.task).join(", ") || "—"}</td></tr>
-</table>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#eef2f7;padding:20px;min-height:100vh;color:#1f2937}
+.wrap{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.10);overflow:hidden;max-width:880px;margin:0 auto}
+.hdr{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);color:#fff;padding:28px 32px}
+.ex-section h3{font-size:1em;font-weight:800;color:#1e3a5f;margin:14px 0 6px}
+.ex-section h4{font-size:.9em;font-weight:700;color:#374151;margin:12px 0 4px}
+.ex-section table{border-collapse:collapse;width:100%;margin:6px 0 14px}
+.ex-section td,.ex-section th{border:1px solid #e5e7eb;padding:8px 10px;vertical-align:top;font-size:.88em}
+.ex-section th{background:#f1f5f9;color:#374151;font-weight:700;text-align:left}
+.ex-section pre{white-space:pre-wrap;background:#f8faff;border:1px solid #e0e7ff;border-radius:8px;padding:10px;font-size:.85em}
+.ex-section hr{border:0;border-top:1px solid #e5e7eb;margin:14px 0}
+.ex-section small{color:#6b7280;font-weight:normal}
+details summary{cursor:pointer;user-select:none}
+</style>
+</head><body>
+<div class="wrap">
 
-${htmlScoreBlocks.join("\n<hr/>\n")}
+  <div class="hdr">
+    <div style="font-size:1.65em;font-weight:900;letter-spacing:-.5px;margin-bottom:14px">📋 Báo cáo kết quả</div>
+    <table style="border-collapse:collapse;width:100%;font-size:.93em">
+      <tr>
+        <td style="padding:4px 14px 4px 0;opacity:.7;font-size:.85em;white-space:nowrap">👤 Học viên</td>
+        <td style="font-weight:800;font-size:1.08em;color:#fff;padding-right:24px">${csvEscape(p.fullName || "—")}</td>
+        <td style="padding:4px 14px 4px 0;opacity:.7;font-size:.85em;white-space:nowrap">🏫 Lớp</td>
+        <td style="font-weight:700;color:#fff">${csvEscape(p.classCode || "—")}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 14px 4px 0;opacity:.7;font-size:.85em">📧 Email</td>
+        <td style="color:rgba(255,255,255,.9);padding-right:24px">${csvEscape(p.email || "—")}</td>
+        <td style="padding:4px 14px 4px 0;opacity:.7;font-size:.85em">🗣 Dialect</td>
+        <td style="color:rgba(255,255,255,.9)">${csvEscape(p.dialect || "—")}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 14px 4px 0;opacity:.7;font-size:.85em">⏱ Nộp lúc</td>
+        <td colspan="3" style="color:rgba(255,255,255,.85)">${new Date().toLocaleString("vi-VN")}</td>
+      </tr>
+    </table>
+  </div>
 
-<h2>📝 Bài tập (tất cả đã lưu)</h2>
-${exHtmlBlocks.join("\n")}
+  <div style="padding:20px 28px 22px;background:#f8faff;border-bottom:1px solid #e5e7eb">
+    <div style="font-size:.72em;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Tổng quan kết quả</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+      <div style="background:${avgRk.bg};border:2px solid ${avgRk.border};border-radius:14px;padding:16px 20px;text-align:center;min-width:110px">
+        <div style="font-size:.7em;font-weight:700;color:#374151;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">TB tổng</div>
+        <div style="font-size:2.7em;font-weight:900;color:${avgRk.color};line-height:1">${avgOverall ?? "—"}</div>
+        <div style="background:${avgRk.border};color:${avgRk.color};font-size:.73em;font-weight:800;margin-top:6px;border-radius:10px;padding:2px 10px;display:inline-block">${avgRk.label}</div>
+      </div>
+      <div style="display:flex;flex:1;gap:10px;flex-wrap:wrap;align-items:flex-start">
+        ${overviewCards}
+      </div>
+    </div>
+  </div>
 
+  <div style="padding:24px 28px">
+    ${htmlScoreBlocks.join("")}
+  </div>
+
+  ${exHtmlBlocks.length > 0 ? `<div style="padding:0 28px 28px">
+    <div style="border-top:2px solid #e5e7eb;padding-top:20px">
+      <div style="font-size:.72em;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">📝 Bài tập</div>
+      <div class="ex-section" style="background:#f8faff;border-radius:12px;padding:18px 22px">${exHtmlBlocks.join("")}</div>
+    </div>
+  </div>` : ""}
+
+</div>
 </body></html>`;
 
   return { txt, csv, html };
